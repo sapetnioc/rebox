@@ -10,7 +10,12 @@ from rebox import __version__
 from rebox.cli import main
 from rebox.config import ConfigError, Project, load_env
 from rebox.init import init_project
-from rebox.recipes import read_locked
+from rebox.recipes import BuiltinSource, read_locked
+
+
+def latest(name: str) -> str:
+    """Newest version of a builtin recipe (tests must not hardcode it)."""
+    return f"builtin:{name}@{BuiltinSource('builtin').versions(name)[0]}"
 
 
 @pytest.fixture()
@@ -33,7 +38,7 @@ def test_init_creates_a_working_project(project_dir):
     assert not (project_dir / "pixi.toml").exists()
 
     env = load_env(Project(project_dir), "malware-lab", check_binds=False)
-    assert [r.ref for r in env.recipes][:2] == ["builtin:base@1.0.0", "builtin:pixi@1.1.0"]
+    assert [r.ref for r in env.recipes][:2] == [latest("base"), latest("pixi")]
 
     with pytest.raises(ConfigError, match="already contains"):
         init_project(project_dir)
@@ -58,7 +63,7 @@ def test_local_recipes_override_builtin(project_dir):
     custom.write_text('requires = ["base"]\npost = "echo my pixi"\n')
     add_env(project_dir)
     env = load_env(Project(project_dir), "e")
-    assert [r.ref for r in env.recipes] == ["builtin:base@1.0.0", "local:pixi@9.0.0"]
+    assert [r.ref for r in env.recipes] == [latest("base"), "local:pixi@9.0.0"]
 
 
 def test_builtin_lock_entry(project_dir, monkeypatch):
