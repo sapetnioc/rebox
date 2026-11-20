@@ -1,0 +1,17 @@
+description = "Pixi package manager (the sandbox opens a Pixi shell on the /rebox workspace)"
+requires = ["base"]
+
+post = '''
+arch=$(uname -m)
+url="https://github.com/prefix-dev/pixi/releases/download/v${PIXI_VERSION}/pixi-${arch}-unknown-linux-musl.tar.gz"
+curl -fsSL "$url" | tar -xz --no-same-owner -C /usr/local/bin pixi
+chmod 755 /usr/local/bin/pixi
+pixi --version
+'''
+
+[args]
+PIXI_VERSION = "0.84.2"
+
+
+[environment]
+PIXI_NO_PATH_UPDATE = "1"

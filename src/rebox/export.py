@@ -69,7 +69,7 @@ def apptainer_version() -> str:
 
 
 def resolved_sandbox_toml(env: SandboxEnv) -> dict[str, Any]:
-    """A sandbox.toml equivalent to ``env`` that does not depend on defaults.toml.
+    """A rebox.toml equivalent to ``env`` that does not depend on rebox-defaults.toml.
 
     Every recipe is pinned to its exact version and read from a local copy of
     its source (``recipes/<source>/``), so no git access is needed.
@@ -132,16 +132,8 @@ def export_env(env: SandboxEnv, out: Path) -> Path:
     if out.exists() and any(out.iterdir()):
         raise ConfigError(f"Output directory {out} is not empty")
     out.mkdir(parents=True, exist_ok=True)
-    root = env.project.root
-
-    # Host tooling: the project's Pixi environment (which provides rebox)
-    from .init import GITIGNORE, pixi_manifest, project_channels
-    for name in ("pixi.toml", "pixi.lock"):
-        if (root / name).is_file():
-            shutil.copy2(root / name, out / name)
-    if not (out / "pixi.toml").is_file():
-        (out / "pixi.toml").write_text(pixi_manifest(out.name, project_channels()))
-    (out / "defaults.toml").write_text(DEFAULTS_PLACEHOLDER)
+    from .init import GITIGNORE
+    (out / "rebox-defaults.toml").write_text(DEFAULTS_PLACEHOLDER)
     (out / ".gitignore").write_text(GITIGNORE)
 
     # Exact versions of the recipes used, one local source per original source
@@ -157,7 +149,7 @@ def export_env(env: SandboxEnv, out: Path) -> Path:
     # Environment
     env_out = out / "envs" / env.name
     (env_out / "workspace").mkdir(parents=True)
-    (env_out / "sandbox.toml").write_text(
+    (env_out / "rebox.toml").write_text(
         f"# Resolved export of environment '{env.name}' (defaults merged in).\n"
         + tomli_w.dumps(resolved_sandbox_toml(env))
     )
@@ -177,26 +169,15 @@ def pack_env(env: SandboxEnv, output: Path, *, include_home: bool = False) -> Pa
     """Create a tarball that redeploys ``env`` on a machine without internet."""
     if not env.image.is_file():
         raise ConfigError(f"Image not built yet: run `rebox build {env.name}` first")
-    pixi_pack = shutil.which("pixi-pack")
-    if not pixi_pack:
-        raise ConfigError("pixi-pack not found on PATH (it is a dependency of the host Pixi environment)")
-    root = env.project.root
-    from .init import has_rebox_dependency
-    if not has_rebox_dependency(root / "pixi.toml"):
-        raise ConfigError(
-            f"{root / 'pixi.toml'} must exist and depend on rebox: the offline bundle ships that "
-            "Pixi environment (see `rebox init`)"
-        )
-    if not (root / "pixi.lock").is_file():
-        raise ConfigError("The project has no pixi.lock; run `pixi install` in it first")
-
+    from .hostenv import host_manifest, installed_packages
+    host_manifest(installed_packages())  # fail early if rebox is not a conda package here
     bundle_name = output.name.removesuffix(".tar").removesuffix(".tar.gz")
     with tempfile.TemporaryDirectory(prefix="sandbox-pack-") as tmp:
         stage = Path(tmp) / bundle_name
         export_env(env, stage)
         env_out = stage / "envs" / env.name
 
-        # Built image and installed workspace (including .pixi, valid at /sandbox)
+        # Built image and installed workspace (including .pixi, valid at /rebox)
         state = env_out / ".state"
         state.mkdir()
         shutil.copy2(env.image, state / "image.sif")
@@ -207,13 +188,9 @@ def pack_env(env: SandboxEnv, output: Path, *, include_home: bool = False) -> Pa
             shutil.copytree(env.home_dir, state / "home", symlinks=True)
         _relock(stage, env.name)  # now records the image checksum too
 
-        # Host tools as a self-extracting conda environment
-        print("Packing host tools with pixi-pack...")
-        subprocess.run(
-            [pixi_pack, str(root / "pixi.toml"), "--create-executable",
-             "--output-file", str(stage / "host-env.sh")],
-            check=True,
-        )
+        # The conda environment rebox runs in, as a self-extracting archive
+        from .hostenv import pack_host_environment
+        pack_host_environment(stage / "host-env.sh", Path(tmp) / "host-manifest")
         _make_executable(stage / "host-env.sh")
         (stage / "install.sh").write_text(INSTALL_SH.format(name=env.name))
         (stage / "rebox").write_text(WRAPPER_SH)

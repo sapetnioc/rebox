@@ -21,19 +21,16 @@ rebox --version
 ```
 
 `pixi global` puts rebox and its tools in a private environment and only
-exposes the `rebox` command. Then create a project, which holds your
-environments and your own recipes:
+exposes the `rebox` command. rebox can also be a dependency of any Pixi
+environment (`pixi add rebox` in a workspace that lists its channel), then run
+with `pixi run rebox`.
+
+Then create a project, which holds your environments and your own recipes:
 
 ```
 rebox init my-sandboxes --examples     # --examples: add the example environments
 cd my-sandboxes
 ```
-
-`rebox init` writes a `pixi.toml` depending on rebox (from the channel rebox
-was installed from; add others with `--channel URL`). Running `pixi install`
-there pins the rebox version in `pixi.lock`: `pixi run rebox ...` then uses
-exactly that version, and `rebox pack` ships that environment in offline
-bundles. Both `rebox ...` and `pixi run rebox ...` work in a project.
 
 ```
 rebox list                             # recipes (all versions) and environments
@@ -67,22 +64,21 @@ automatically fall back to a root-mapped user namespace.
 A project, as created by `rebox init`:
 
 ```
-pixi.toml, pixi.lock       host tools: rebox (and its dependencies)
-defaults.toml              recipe sources, resources and recipes applied to every environment
+rebox-defaults.toml              recipe sources, resources and recipes applied to every environment
 recipes/                   the "local" recipe source: your recipes, <recipe>/<version>.toml
 .sources/                  generated: local mirrors of git recipe sources
 envs/<name>/
-  sandbox.toml             recipes + resources of this environment
-  sandbox.lock.toml        locked recipe versions (+ build info); commit it
-  workspace/               mounted read-write at /sandbox inside the sandbox
+  rebox.toml             recipes + resources of this environment
+  rebox.lock.toml        locked recipe versions (+ build info); commit it
+  workspace/               mounted read-write at /rebox inside the sandbox
     pixi.toml, pixi.lock   the Pixi workspace of the sandbox
   .state/                  generated: image.sif, build.def, persistent home
 ```
 
-rebox finds the project by looking for `defaults.toml` in the current
+rebox finds the project by looking for `rebox-defaults.toml` in the current
 directory and its parents (or `REBOX_ROOT`).
 
-`sandbox.toml` lives outside the mounted workspace, so code running in the
+`rebox.toml` lives outside the mounted workspace, so code running in the
 sandbox cannot change its own configuration.
 
 ## Recipes
@@ -93,7 +89,7 @@ is built. Recipes declare their dependencies and can take arguments.
 ```toml
 # recipes/nodejs/1.0.0.toml
 description = "Node.js runtime from the official nodejs.org binaries"
-requires = ["base"]                     # same syntax as in sandbox.toml (see below)
+requires = ["base"]                     # same syntax as in rebox.toml (see below)
 
 post = '''
 curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
@@ -131,8 +127,8 @@ recipes/                       example: a local source
   vscode/1.0.0.toml
 ```
 
-Sources are declared in `defaults.toml` (and can be added, overridden or
-disabled with `enabled = false` in an environment's `sandbox.toml`):
+Sources are declared in `rebox-defaults.toml` (and can be added, overridden or
+disabled with `enabled = false` in an environment's `rebox.toml`):
 
 ```toml
 [sources.local]
@@ -180,9 +176,9 @@ environment; constraints from several places on the same recipe are combined.
 ### Locking and updating
 
 The first `build` (or `lock`) resolves every recipe and writes
-`envs/NAME/sandbox.lock.toml`: source, version, sha256, git commit, path and
+`envs/NAME/rebox.lock.toml`: source, version, sha256, git commit, path and
 arguments of each recipe. From then on, builds use exactly these versions,
-even when newer ones are published; editing `sandbox.toml` only re-resolves
+even when newer ones are published; editing `rebox.toml` only re-resolves
 what the change requires (e.g. a new recipe, a constraint the locked version
 no longer satisfies). Commit the lock file with the environment.
 
@@ -197,7 +193,7 @@ rebox update NAME --no-build  # update the lock, rebuild later with `build`
 `update` rebuilds the image when versions changed (the lock is only written
 once the build succeeds) and does nothing otherwise. To move to a version
 excluded by a constraint (`outdated` marks those), change the constraint in
-`sandbox.toml` first.
+`rebox.toml` first.
 
 Rules for writing recipes:
 
@@ -211,13 +207,13 @@ Rules for writing recipes:
 - HTTP(S) proxy variables of the host are available during the build.
 - Pin versions with `[args]` to keep images reproducible.
 
-Recipes shipped with rebox (source `builtin`, all at version 1.0.0; a
-project's `local` source is searched first, so it can override them):
+Recipes shipped with rebox (source `builtin`; a project's `local` source is
+searched first, so it can override them):
 
 | recipe           | content                                                        |
 |------------------|----------------------------------------------------------------|
 | `base`           | Debian/Ubuntu essentials, socat, the `apt-install` helper      |
-| `pixi`           | Pixi                                                           |
+| `pixi`           | Pixi (1.1.0; 1.0.0 is kept for locked environments)            |
 | `nodejs`         | Node.js (official binaries)                                    |
 | `claude-code`    | Claude Code CLI                                                |
 | `analysis-tools` | strace, ltrace, gdb, file, binutils, lsof…                     |
@@ -229,7 +225,7 @@ project's `local` source is searched first, so it can override them):
 ## Environments and resources
 
 ```toml
-# envs/ai-agent/sandbox.toml
+# envs/ai-agent/rebox.toml
 description = "Claude Code agent working on a single project directory"
 
 [build]
@@ -251,10 +247,10 @@ target = "/work"
 mode = "rw"                               # "ro" (default) or "rw"
 optional = false                          # true: skip if the source is missing
 
-[resources.binds.gitconfig]               # bind inherited from defaults.toml…
+[resources.binds.gitconfig]               # bind inherited from rebox-defaults.toml…
 enabled = false                           # …turned off here
 
-[resources.allow.anthropic]               # domain group from defaults.toml…
+[resources.allow.anthropic]               # domain group from rebox-defaults.toml…
 enabled = true                            # …turned on here
 
 [resources.allow.internal]                # a new group
@@ -265,9 +261,9 @@ ports = [443]
 ANTHROPIC_API_KEY = "${ANTHROPIC_API_KEY}"
 ```
 
-Merging with `defaults.toml`: tables are merged key by key, values from the
+Merging with `rebox-defaults.toml`: tables are merged key by key, values from the
 environment win, lists are replaced. Set `inherit_defaults = false` to ignore
-`defaults.toml` entirely. `rebox show NAME [--definition]` prints the
+`rebox-defaults.toml` entirely. `rebox show NAME [--definition]` prints the
 resolved result.
 
 All resource keys:
@@ -291,7 +287,7 @@ All resource keys:
 What is always applied: `--containall` (own PID/IPC namespaces, minimal
 `/dev`, no host home, `/tmp` or working directory), `--cleanenv` (no host
 environment variables, proxies included, except those in `resources.env`),
-the workspace mounted at `/sandbox`, the sandbox user being your own
+the workspace mounted at `/rebox`, the sandbox user being your own
 unprivileged user.
 
 Limits: with `auto`, limits are enforced through `systemd-run --user --scope`
@@ -319,7 +315,7 @@ sandbox (no network)                              host
   to install). Plain HTTP requests are checked the same way.
 - Domains come from the enabled `[resources.allow.*]` groups. `example.com`
   matches only that name; `*.example.com` matches any subdomain (not the apex).
-  `defaults.toml` defines the groups `conda` (enabled), `pypi`, `npm`,
+  `rebox-defaults.toml` defines the groups `conda` (enabled), `pypi`, `npm`,
   `github` and `anthropic` (disabled; enable them per environment).
 - DNS is resolved on the host: the sandbox has no resolver, which also
   prevents DNS-based exfiltration. Allowed names that resolve to loopback,
@@ -344,7 +340,7 @@ github.com); restrict groups to what each environment really needs.
 ## GUI applications (VS Code)
 
 Graphical programs need access to your display, given with ordinary binds and
-environment variables (see `envs/vscode/sandbox.toml`):
+environment variables (see `envs/vscode/rebox.toml`):
 
 ```toml
 [build]
@@ -357,13 +353,13 @@ mode = "ro"
 
 [resources.binds.xauthority]
 source = "${XAUTHORITY:-~/.Xauthority}"
-target = "/run/sandbox-x11/Xauthority"
+target = "/run/rebox-x11/Xauthority"
 mode = "ro"
 optional = true
 
 [resources.env]
 DISPLAY = "${DISPLAY}"
-XAUTHORITY = "/run/sandbox-x11/Xauthority"
+XAUTHORITY = "/run/rebox-x11/Xauthority"
 ```
 
 Then `rebox run vscode --no-pixi -- code /work`, or open a
@@ -388,7 +384,7 @@ works through XWayland.
 
 ## Inside the sandbox
 
-`rebox shell` opens `pixi shell` on `/sandbox/pixi.toml`: the software from
+`rebox shell` opens `pixi shell` on `/rebox/pixi.toml`: the software from
 the recipes is on the `PATH`, together with the Pixi environment. Packages added
 with `pixi add` are stored in `envs/NAME/workspace` and persist across runs.
 Installing packages needs network: use `--network allowlist` (the `conda`
@@ -400,22 +396,22 @@ add `--no-pixi` to run it directly.
 
 ## Reproducing an environment on another machine
 
-`envs/NAME/sandbox.lock.toml` pins every recipe (source, version, sha256, git
+`envs/NAME/rebox.lock.toml` pins every recipe (source, version, sha256, git
 commit) and records build information (hash of the generated definition,
 image and `pixi.lock` hashes, Apptainer version). With the project, the lock
 and access to the sources, `rebox build NAME` rebuilds the same
 definition on another machine.
 
 `rebox export NAME -o DIR` writes a standalone project in `DIR`:
-the fully resolved `sandbox.toml` (defaults merged in, every recipe pinned with
+the fully resolved `rebox.toml` (defaults merged in, every recipe pinned with
 `@==version`), a copy of the exact recipe versions it uses as local sources
 (`recipes/<source>/<recipe>/<version>.toml`, so no git access is needed),
-the workspace `pixi.toml` / `pixi.lock`, the generated `build.def`, and the
-project's `pixi.toml` / `pixi.lock` (so the same rebox version is used). On the
-other machine:
+the workspace `pixi.toml` / `pixi.lock` and the generated `build.def`. The
+lock file records the rebox version used. On the other machine, with rebox
+installed:
 
 ```
-cd DIR && pixi run rebox build NAME
+cd DIR && rebox build NAME
 ```
 
 For identical images, pin everything that is fetched at build time:
@@ -424,8 +420,7 @@ For identical images, pin everything that is fetched at build time:
 - Debian packages with `recipe_args.base.APT_SNAPSHOT` (snapshot.debian.org),
 - versions in recipe arguments (`PIXI_VERSION`, `NODE_VERSION`, …).
 
-The Pixi workspace is pinned by its `pixi.lock`; rebox and the host tools by
-the project's `pixi.lock`. Recipes from the `builtin` source are locked like the
+The Pixi workspace is pinned by its `pixi.lock`. Recipes from the `builtin` source are locked like the
 others (version and sha256) and also record the rebox version they came from.
 
 ## Offline bundle
@@ -436,10 +431,12 @@ rebox pack NAME -o NAME-bundle.tar
 
 The bundle contains the exported configuration, the built image, the installed
 workspace (`.pixi` included; conda prefixes stay valid since the workspace is
-always mounted at `/sandbox`), and the project's Pixi environment (rebox,
-Apptainer, Python...) packed by `pixi-pack` as a self-extracting executable.
-The project's `pixi.toml` must therefore depend on rebox (as created by
-`rebox init`) and be installed (`pixi.lock` present). The persistent home is left out unless you pass
+always mounted at `/rebox`), and an exact copy of the conda environment
+rebox runs in (rebox, Apptainer, Python...: every package pinned to its
+version, build and channel, read from `conda-meta`), locked with `pixi lock`
+and packed by `pixi-pack` as a self-extracting executable. rebox must
+therefore be installed as a conda package (globally or in a Pixi
+environment), and the channels it came from must be reachable when packing. The persistent home is left out unless you pass
 `--include-home` (it may contain credentials).
 
 On the target machine (no internet, no Pixi, no rebox needed):
@@ -492,5 +489,5 @@ pixi run -e test test        # run the tests
 ```
 
 Sources: `src/rebox/` (CLI, configuration, recipe resolution, image build,
-allowlist proxy), `src/rebox/data/` (built-in recipes, `defaults.toml`
+allowlist proxy), `src/rebox/data/` (built-in recipes, `rebox-defaults.toml`
 template, example environments), `tests/`.

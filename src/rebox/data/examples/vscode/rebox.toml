@@ -30,10 +30,10 @@ mode = "ro"
 
 [resources.binds.xauthority]
 source = "${XAUTHORITY:-~/.Xauthority}"
-target = "/run/sandbox-x11/Xauthority"
+target = "/run/rebox-x11/Xauthority"
 mode = "ro"
 optional = true
 
 [resources.env]
 DISPLAY = "${DISPLAY}"
-XAUTHORITY = "/run/sandbox-x11/Xauthority"
+XAUTHORITY = "/run/rebox-x11/Xauthority"

@@ -11,17 +11,17 @@ from pathlib import Path
 
 from . import __version__
 from .build import build_image, clean, prepare_workspace, render_def
-from .config import ConfigError, Project, list_envs, load_env, load_toml
+from .config import WORKSPACE_TARGET, ConfigError, Project, list_envs, load_env, load_toml
 from .run import build_command, limits_backend, run_command, shell_argv
 
 SANDBOX_TEMPLATE = """\
 description = "{description}"
 
 [build]
-# Recipes installed in the image, after the default recipes of defaults.toml.
+# Recipes installed in the image, after the default recipes of rebox-defaults.toml.
 # Syntax: [source:]name[@constraint], e.g. "nodejs", "nodejs@1.2",
 # "team:analysis@>=2,<3". Dependencies (requires) are added automatically.
-# The chosen versions are recorded in sandbox.lock.toml; change them with
+# The chosen versions are recorded in rebox.lock.toml; change them with
 # `rebox update {name}`.
 recipes = [{recipes}]
 
@@ -30,7 +30,7 @@ recipes = [{recipes}]
 # NODE_VERSION = "24.20.0"
 
 [resources]
-# Anything set here overrides defaults.toml. Examples:
+# Anything set here overrides rebox-defaults.toml. Examples:
 # network = "host"        # "none" or "host"
 # cpus = 4
 # memory = "8G"
@@ -40,7 +40,7 @@ recipes = [{recipes}]
 # target = "/work"
 # mode = "rw"
 #
-# Disable a bind inherited from defaults.toml:
+# Disable a bind inherited from rebox-defaults.toml:
 # [resources.binds.gitconfig]
 # enabled = false
 #
@@ -61,7 +61,7 @@ platforms = ["linux-64"]
 def cmd_init(args: argparse.Namespace) -> int:
     from .init import init_project
     directory = Path(args.directory).resolve()
-    notes = init_project(directory, examples=args.examples, channels=args.channel, pixi=not args.no_pixi)
+    notes = init_project(directory, examples=args.examples)
     print(f"Created a rebox project in {directory}")
     for note in notes:
         print(f"  {note}")
@@ -118,18 +118,18 @@ def cmd_list(project: Project, args: argparse.Namespace) -> int:
 def cmd_new(project: Project, args: argparse.Namespace) -> int:
     from .recipes import resolve
     env_dir = project.env_dir(args.name)
-    if (env_dir / "sandbox.toml").exists():
+    if (env_dir / "rebox.toml").exists():
         raise ConfigError(f"Environment '{args.name}' already exists")
     resolve(args.recipes, _default_sources(project))  # validate the references
     (env_dir / "workspace").mkdir(parents=True, exist_ok=True)
-    (env_dir / "sandbox.toml").write_text(SANDBOX_TEMPLATE.format(
+    (env_dir / "rebox.toml").write_text(SANDBOX_TEMPLATE.format(
         name=args.name,
         description=args.description or f"Sandbox {args.name}",
         recipes=", ".join(f'"{r}"' for r in args.recipes),
     ))
     (env_dir / "workspace" / "pixi.toml").write_text(WORKSPACE_TEMPLATE.format(name=args.name))
     (env_dir / ".gitignore").write_text(".state/\nworkspace/.pixi/\n")
-    print(f"Created {env_dir}. Edit sandbox.toml, then run: rebox build {args.name}")
+    print(f"Created {env_dir}. Edit rebox.toml, then run: rebox build {args.name}")
     return 0
 
 
@@ -162,7 +162,7 @@ def cmd_show(project: Project, args: argparse.Namespace) -> int:
     if not env.lock_file.is_file():
         print("  (not locked yet: versions are fixed by the next `build` or `lock`)")
     elif env.changes:
-        _print_changes(env.changes, "  Lock is out of date with sandbox.toml; the next build applies:")
+        _print_changes(env.changes, "  Lock is out of date with rebox.toml; the next build applies:")
     print(f"Network:     {res.network}")
     if res.network == "allowlist" or args.definition:
         for rule in res.allow:
@@ -174,7 +174,7 @@ def cmd_show(project: Project, args: argparse.Namespace) -> int:
           f"{f'{res.memory_mb} MB' if res.memory_mb else 'unlimited'}   "
           f"PIDs: {res.pids or 'unlimited'}   (limits via {limits_backend(env)})")
     print(f"Home:        {res.home}   Writable tmpfs: {res.writable_tmpfs}   GPU: {res.gpu}")
-    print(f"Workspace:   {env.workspace} -> /sandbox (rw)")
+    print(f"Workspace:   {env.workspace} -> {WORKSPACE_TARGET} (rw)")
     for bind in res.binds:
         print(f"Bind:        {bind.name}: {bind.source} -> {bind.target} ({bind.mode})")
     for key in res.env:
@@ -202,7 +202,7 @@ def _build_and_lock(env, *, force: bool = False, workspace: bool = True, dry_run
 def cmd_build(project: Project, args: argparse.Namespace) -> int:
     env = load_env(project, args.name, check_binds=False)
     if env.changes:
-        header = "Locking recipe versions:" if not env.lock_file.is_file() else "Lock updated for sandbox.toml changes:"
+        header = "Locking recipe versions:" if not env.lock_file.is_file() else "Lock updated for rebox.toml changes:"
         _print_changes(env.changes, header)
     _build_and_lock(env, force=args.force, workspace=not args.no_workspace, dry_run=args.dry_run)
     return 0
@@ -263,7 +263,7 @@ def cmd_run(project: Project, args: argparse.Namespace) -> int:
     if not inner:
         raise ConfigError("No command given, e.g.: rebox run NAME -- python script.py")
     if not args.no_pixi and env.has_recipe("pixi") and (env.workspace / "pixi.toml").is_file():
-        inner = ["pixi", "run", "--manifest-path", "/sandbox/pixi.toml", "--", *inner]
+        inner = ["pixi", "run", "--manifest-path", f"{WORKSPACE_TARGET}/pixi.toml", "--", *inner]
     cmd = build_command(env, inner, network_override=args.network)
     return run_command(env, cmd, dry_run=args.dry_run)
 
@@ -309,12 +309,9 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"rebox {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
-    s = sub.add_parser("init", help="create a rebox project (defaults.toml, recipes/, envs/, pixi.toml)")
+    s = sub.add_parser("init", help="create a rebox project (rebox-defaults.toml, recipes/, envs/)")
     s.add_argument("directory", nargs="?", default=".")
     s.add_argument("--examples", action="store_true", help="add the example environments")
-    s.add_argument("--channel", action="append", default=[],
-                   help="conda channel providing rebox, added to pixi.toml (repeatable)")
-    s.add_argument("--no-pixi", action="store_true", help="do not create pixi.toml")
     s.set_defaults(func=cmd_init, needs_project=False)
 
     sub.add_parser("list", help="list recipes (all versions) and environments").set_defaults(func=cmd_list)
@@ -352,7 +349,7 @@ def parser() -> argparse.ArgumentParser:
             s.add_argument("command", nargs="*", help="command to run, after --")
         s.set_defaults(func=func)
 
-    s = sub.add_parser("lock", help="resolve recipe versions into envs/NAME/sandbox.lock.toml (no build)")
+    s = sub.add_parser("lock", help="resolve recipe versions into envs/NAME/rebox.lock.toml (no build)")
     s.add_argument("name")
     s.set_defaults(func=cmd_lock)
 

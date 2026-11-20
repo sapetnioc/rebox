@@ -22,7 +22,7 @@ builtin = true
 
 # Defaults applied to every environment in envs/, unless the environment sets
 # `inherit_defaults = false`. Tables are merged; values set in an environment's
-# sandbox.toml override the ones below. A bind defined here can be turned off in
+# rebox.toml override the ones below. A bind defined here can be turned off in
 # an environment with `[resources.binds.<name>] enabled = false`.
 
 [build]
@@ -59,7 +59,7 @@ hostname = "sandbox"
 TERM = "${TERM:-xterm-256color}"
 
 # Host paths visible in every sandbox. envs/<name>/workspace is always mounted
-# read-write at /sandbox and does not need to be listed.
+# read-write at /rebox and does not need to be listed.
 [resources.binds.gitconfig]
 source = "~/.gitconfig"
 target = "/home/sandbox/.gitconfig"

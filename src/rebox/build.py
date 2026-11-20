@@ -58,8 +58,8 @@ def render_def(env: SandboxEnv) -> str:
         "",
         "%environment",
         f"    export HOME={SANDBOX_HOME}",
-        f"    export SANDBOX_NAME={shlex.quote(env.name)}",
-        f"    export SANDBOX_WORKSPACE={WORKSPACE_TARGET}",
+        f"    export REBOX_NAME={shlex.quote(env.name)}",
+        f"    export REBOX_WORKSPACE={WORKSPACE_TARGET}",
     ]
     for recipe in env.recipes:
         for key, value in recipe.environment.items():
@@ -123,6 +123,7 @@ def prepare_workspace(env: SandboxEnv, *, dry_run: bool = False) -> None:
     if not env.has_recipe("pixi"):
         print("Environment does not use the 'pixi' recipe: skipping workspace installation")
         return
+    _reset_moved_workspace(env, dry_run=dry_run)
     cmd = build_command(
         env,
         ["pixi", "install", "--manifest-path", f"{WORKSPACE_TARGET}/pixi.toml"],
@@ -132,6 +133,30 @@ def prepare_workspace(env: SandboxEnv, *, dry_run: bool = False) -> None:
     code = run_command(env, cmd, dry_run=dry_run, keep_proxy=True)
     if code != 0:
         raise ConfigError(f"`pixi install` in the sandbox workspace failed (exit code {code})")
+    if not dry_run:
+        (env.workspace / ".pixi" / MOUNT_MARKER).write_text(WORKSPACE_TARGET + "\n")
+
+
+MOUNT_MARKER = "rebox-mount-point"
+
+
+def _reset_moved_workspace(env: SandboxEnv, *, dry_run: bool = False) -> None:
+    """Remove Pixi environments installed for another mount point.
+
+    Conda prefixes embed their absolute path: environments installed when the
+    workspace was mounted elsewhere (``/sandbox`` before rebox 0.4) must be
+    reinstalled.
+    """
+    envs = env.workspace / ".pixi" / "envs"
+    if not envs.is_dir():
+        return
+    marker = env.workspace / ".pixi" / MOUNT_MARKER
+    mounted_at = marker.read_text().strip() if marker.is_file() else None
+    if mounted_at == WORKSPACE_TARGET:
+        return
+    print(f"Reinstalling the workspace Pixi environments for the {WORKSPACE_TARGET} mount point")
+    if not dry_run:
+        shutil.rmtree(envs)
 
 
 def clean(env: SandboxEnv, *, all_state: bool = False) -> None:

@@ -95,7 +95,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "v1")
 
-    write(tmp_path / "defaults.toml", f"""
+    write(tmp_path / "rebox-defaults.toml", f"""
         [sources.builtin]
         path = "recipes"
 
@@ -113,7 +113,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     recipe(tmp_path / "recipes" / "base" / "2.0.0.toml", post="echo base 2.0")
     recipe(tmp_path / "recipes" / "node" / "1.0.0.toml", requires=["base@1"], args={"NODE": "20"})
     recipe(tmp_path / "recipes" / "tool" / "0.5.toml", post="echo builtin tool")
-    write(tmp_path / "envs" / "demo" / "sandbox.toml", """
+    write(tmp_path / "envs" / "demo" / "rebox.toml", """
         [build]
         recipes = ["node", "team:extra"]
     """)
@@ -134,7 +134,7 @@ def test_resolution_across_sources(project):
 
 
 def test_unqualified_reference_uses_source_order(project):
-    path = project.env_dir("demo") / "sandbox.toml"
+    path = project.env_dir("demo") / "rebox.toml"
     path.write_text('[build]\nrecipes = ["tool"]\n')
     assert "builtin:tool@0.5" in names(load_env(project, "demo"))
     path.write_text('[build]\nrecipes = ["team:tool"]\n')
@@ -142,14 +142,14 @@ def test_unqualified_reference_uses_source_order(project):
 
 
 def test_same_name_from_two_sources_is_an_error(project):
-    path = project.env_dir("demo") / "sandbox.toml"
+    path = project.env_dir("demo") / "rebox.toml"
     path.write_text('[build]\nrecipes = ["tool", "team:extra"]\n')
     with pytest.raises(ConfigError, match="two sources"):
         load_env(project, "demo")
 
 
 def test_unsatisfiable_constraint(project):
-    path = project.env_dir("demo") / "sandbox.toml"
+    path = project.env_dir("demo") / "rebox.toml"
     path.write_text('[build]\nrecipes = ["base@2", "node"]\n')
     with pytest.raises(ConfigError, match="No version of builtin:base"):
         load_env(project, "demo")
@@ -157,7 +157,7 @@ def test_unsatisfiable_constraint(project):
 
 def test_env_can_add_and_disable_sources(project, tmp_path):
     recipe(tmp_path / "mine" / "own" / "3.0.toml")
-    path = project.env_dir("demo") / "sandbox.toml"
+    path = project.env_dir("demo") / "rebox.toml"
     path.write_text(textwrap.dedent(f"""
         [sources.team]
         enabled = false
@@ -223,7 +223,7 @@ def test_modified_published_version_is_detected(project):
 
 def test_lock_follows_sandbox_toml_changes(project):
     write_lock(load_env(project, "demo"))
-    path = project.env_dir("demo") / "sandbox.toml"
+    path = project.env_dir("demo") / "rebox.toml"
     path.write_text('[build]\nrecipes = ["node", "team:extra", "base@1.0"]\n')
     env = load_env(project, "demo")
     assert "builtin:base@1.0.0" in names(env)

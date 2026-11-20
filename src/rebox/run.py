@@ -16,7 +16,7 @@ from .config import SANDBOX_HOME, WORKSPACE_TARGET, ConfigError, SandboxEnv
 from .proxy import AllowlistProxy, Upstream
 
 PROXY_PORT = 3128
-PROXY_DIR = "/run/sandbox-net"
+PROXY_DIR = "/run/rebox-net"
 PROXY_URL = f"http://127.0.0.1:{PROXY_PORT}"
 
 # Runs inside the sandbox before the user command when network = "allowlist":

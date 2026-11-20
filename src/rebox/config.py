@@ -2,8 +2,8 @@
 
 A sandbox environment is resolved from three sources:
 
-1. ``defaults.toml`` at the project root (unless ``inherit_defaults = false``),
-2. ``envs/<name>/sandbox.toml``,
+1. ``rebox-defaults.toml`` at the project root (unless ``inherit_defaults = false``),
+2. ``envs/<name>/rebox.toml``,
 3. the recipes in ``recipes/`` it references (plus their ``requires``).
 
 Tables are deep-merged, scalar values and lists from the environment replace
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 SANDBOX_HOME = "/home/sandbox"
-WORKSPACE_TARGET = "/sandbox"
+WORKSPACE_TARGET = "/rebox"
 
 
 class ConfigError(Exception):
@@ -40,7 +40,7 @@ class Project:
 
     @property
     def defaults_file(self) -> Path:
-        return self.root / "defaults.toml"
+        return self.root / "rebox-defaults.toml"
 
     @property
     def recipes_dir(self) -> Path:
@@ -55,17 +55,24 @@ class Project:
 
     @classmethod
     def discover(cls, start: Path | None = None) -> "Project":
-        """Find the project root (directory holding ``defaults.toml``)."""
+        """Find the project root (directory holding ``rebox-defaults.toml``)."""
         for var in ("REBOX_ROOT", "PIXI_PROJECT_ROOT"):
             value = os.environ.get(var)
-            if value and (Path(value) / "defaults.toml").is_file():
+            if value and (Path(value) / "rebox-defaults.toml").is_file():
                 return cls(Path(value).resolve())
         here = (start or Path.cwd()).resolve()
         for candidate in (here, *here.parents):
-            if (candidate / "defaults.toml").is_file():
+            if (candidate / "rebox-defaults.toml").is_file():
                 return cls(candidate)
+        for candidate in (here, *here.parents):
+            if (candidate / "defaults.toml").is_file() and (candidate / "envs").is_dir():
+                raise ConfigError(
+                    f"{candidate} looks like a project made by an older rebox: rename "
+                    "defaults.toml to rebox-defaults.toml, envs/*/sandbox.toml to rebox.toml "
+                    "and envs/*/sandbox.lock.toml to rebox.lock.toml"
+                )
         raise ConfigError(
-            "Could not find a rebox project (no defaults.toml in the current "
+            "Could not find a rebox project (no rebox-defaults.toml in the current "
             "directory or its parents). Create one with `rebox init`, or set "
             "REBOX_ROOT to point to it."
         )
@@ -259,7 +266,7 @@ class SandboxEnv:
 
     @property
     def lock_file(self) -> Path:
-        return self.dir / "sandbox.lock.toml"
+        return self.dir / "rebox.lock.toml"
 
     def has_recipe(self, name: str) -> bool:
         if self.recipes:
@@ -287,8 +294,11 @@ def _check_keys(table: dict[str, Any], allowed: set[str], where: str) -> None:
 
 
 def merged_config(project: Project, name: str) -> dict[str, Any]:
-    env_file = project.env_dir(name) / "sandbox.toml"
+    env_file = project.env_dir(name) / "rebox.toml"
     if not env_file.is_file():
+        if (project.env_dir(name) / "sandbox.toml").is_file():
+            raise ConfigError(f"Rename {project.env_dir(name)}/sandbox.toml to rebox.toml (and "
+                              "sandbox.lock.toml to rebox.lock.toml): file names changed in rebox 0.4")
         raise ConfigError(f"Environment '{name}' not found ({env_file} is missing)")
     env_data = load_toml(env_file)
     _check_keys(env_data, ENV_KEYS, str(env_file))
@@ -398,7 +408,7 @@ def load_env(
     _check_keys(build, BUILD_KEYS, "[build]")
     base_image = build.get("base_image")
     if not base_image:
-        raise ConfigError("build.base_image is not set (in defaults.toml or sandbox.toml)")
+        raise ConfigError("build.base_image is not set (in rebox-defaults.toml or rebox.toml)")
     if base_image.startswith("docker://") and "@sha256:" not in base_image:
         warnings.append(
             f"base_image '{base_image}' is not pinned by digest; builds may differ over time"
@@ -418,7 +428,7 @@ def load_env(
         if fetch:
             for source in sources.values():
                 source.fetch()
-        locked = read_locked(project.env_dir(name) / "sandbox.lock.toml")
+        locked = read_locked(project.env_dir(name) / "rebox.lock.toml")
         resolution = resolve(requested, sources, locked, refresh=refresh, refresh_all=refresh_all)
         recipes, changes = resolution.recipes, resolution.changes
         for name_ in overrides:
@@ -461,4 +471,4 @@ def load_env(
 def list_envs(project: Project) -> list[str]:
     if not project.envs_dir.is_dir():
         return []
-    return sorted(p.parent.name for p in project.envs_dir.glob("*/sandbox.toml"))
+    return sorted(p.parent.name for p in project.envs_dir.glob("*/rebox.toml"))

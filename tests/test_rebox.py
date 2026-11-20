@@ -31,7 +31,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     monkeypatch.setattr(run_mod, "apptainer_bin", lambda: "apptainer")
     monkeypatch.setattr(run_mod, "user_systemd_available", lambda: False)
     (tmp_path / "data").mkdir()
-    write(tmp_path / "defaults.toml", f"""
+    write(tmp_path / "rebox-defaults.toml", f"""
         [sources.builtin]
         path = "recipes"
 
@@ -74,7 +74,7 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
         requires = ["tool"]
         post = "echo agent"
     """)
-    write(tmp_path / "envs" / "demo" / "sandbox.toml", """
+    write(tmp_path / "envs" / "demo" / "rebox.toml", """
         description = "demo"
         [build]
         recipes = ["agent"]
@@ -121,11 +121,11 @@ def test_resources_merge_defaults(project):
 
 
 def test_disable_default_bind_and_inheritance(project):
-    path = project.env_dir("demo") / "sandbox.toml"
+    path = project.env_dir("demo") / "rebox.toml"
     path.write_text(path.read_text().replace('mode = "rw"', "enabled = false"))
     assert load_env(project, "demo").resources.binds == []
 
-    write(project.env_dir("bare") / "sandbox.toml", """
+    write(project.env_dir("bare") / "rebox.toml", """
         inherit_defaults = false
         [build]
         base_image = "docker://alpine:3"
@@ -136,7 +136,7 @@ def test_disable_default_bind_and_inheritance(project):
 
 
 def test_unknown_recipe_and_cycle(project):
-    write(project.env_dir("bad") / "sandbox.toml", '[build]\nrecipes = ["nope"]\n')
+    write(project.env_dir("bad") / "rebox.toml", '[build]\nrecipes = ["nope"]\n')
     with pytest.raises(ConfigError, match="Unknown recipe 'nope'"):
         load_env(project, "bad")
     write(project.recipes_dir / "base" / "1.0.0.toml", 'requires = ["agent"]\npost = "true"\n')
@@ -145,7 +145,7 @@ def test_unknown_recipe_and_cycle(project):
 
 
 def test_unknown_keys_are_rejected(project):
-    write(project.env_dir("typo") / "sandbox.toml", "[resources]\nnetwrok = 'host'\n")
+    write(project.env_dir("typo") / "rebox.toml", "[resources]\nnetwrok = 'host'\n")
     with pytest.raises(ConfigError, match="unknown keys"):
         load_env(project, "typo")
 
@@ -165,7 +165,7 @@ def test_build_command(project):
     argv = build_command(env, ["bash"]).argv
     assert argv[:4] == ["apptainer", "--quiet", "exec", "--containall"]
     assert "--network" not in argv  # network = host
-    assert f"{env.workspace}:/sandbox:rw" in argv
+    assert f"{env.workspace}:/rebox:rw" in argv
     assert any(a.endswith(":/data:rw") for a in argv)
     assert "--memory" not in argv  # no systemd user session -> limits not enforced (auto)
     assert argv[-2:] == [str(env.image), "bash"]
@@ -191,7 +191,7 @@ def test_export_is_standalone(project, tmp_path):
 
 
 def test_allowlist_network(project):
-    path = project.env_dir("demo") / "sandbox.toml"
+    path = project.env_dir("demo") / "rebox.toml"
     path.write_text(path.read_text().replace('network = "host"', 'network = "allowlist"') + textwrap.dedent("""
         [resources.allow.github]
         domains = ["github.com", "*.github.com"]
@@ -206,14 +206,14 @@ def test_allowlist_network(project):
     argv = cmd.argv
     assert argv[argv.index("--network") + 1] == "none"
     assert "HTTPS_PROXY=http://127.0.0.1:3128" in argv
-    assert any(a.endswith(":/run/sandbox-net:rw") for a in argv)
+    assert any(a.endswith(":/run/rebox-net:rw") for a in argv)
     assert argv[-5:-3] == ["/bin/sh", "-c"] and argv[-1] == "bash"
     assert cmd.proxy is not None and cmd.proxy.match("api.github.com", 443)
     assert cmd.proxy.match("example.org", 443) is None
 
 
 def test_invalid_allow_domain(project):
-    write(project.env_dir("bad") / "sandbox.toml", """
+    write(project.env_dir("bad") / "rebox.toml", """
         [resources.allow.x]
         domains = ["exa mple.com"]
     """)

@@ -15,7 +15,7 @@ searched in the order they are declared (for ``requires``, the source of the
 requiring recipe is searched first).
 
 Resolution prefers the versions recorded in the environment's
-``sandbox.lock.toml``; ``rebox update`` resolves again to the newest versions
+``rebox.lock.toml``; ``rebox update`` resolves again to the newest versions
 allowed by the constraints.
 """
 
@@ -428,7 +428,7 @@ def load_sources(project: Project, config: dict[str, Any]) -> dict[str, Source]:
             sources[name] = GitSource(name, spec["git"], spec.get("ref", "main"), spec.get("subdir", ""),
                                       project.root / ".sources")
     if not sources:
-        raise ConfigError("No recipe source is configured (add a [sources.<name>] table to defaults.toml)")
+        raise ConfigError("No recipe source is configured (add a [sources.<name>] table to rebox-defaults.toml)")
     return sources
 
 
