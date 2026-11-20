@@ -46,7 +46,7 @@ rm -rf /var/lib/apt/lists/*
 HELPER
 chmod 755 /usr/local/sbin/apt-install
 
-apt-install ca-certificates curl git less procps xz-utils bzip2 unzip socat $EXTRA_PACKAGES
+apt-install ca-certificates curl less procps xz-utils bzip2 unzip socat $EXTRA_PACKAGES
 '''
 
 [args]
