@@ -31,7 +31,7 @@ recipes = [{recipes}]
 
 [resources]
 # Anything set here overrides rebox-defaults.toml. Examples:
-# network = "host"        # "none" or "host"
+# network = "host"        # "none", "host" or "allowlist"
 # cpus = 4
 # memory = "8G"
 #

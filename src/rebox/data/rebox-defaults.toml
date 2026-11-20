@@ -59,7 +59,7 @@ display = false
 # --nv, AMD/ROCm with --rocm, other render nodes in /dev/dri), "nvidia",
 # "amd", "dri" or false. `rebox init` enables it when it finds a GPU.
 gpu = false
-hostname = "sandbox"
+hostname = "rebox"
 
 # Host environment variables passed to the sandbox (${VAR} or ${VAR:-default}).
 # Everything else from the host environment is removed.
@@ -69,6 +69,7 @@ TERM = "${TERM:-xterm-256color}"
 # Host paths visible in every sandbox. envs/<name>/workspace is always mounted
 # read-write at /rebox and does not need to be listed.
 [resources.binds.gitconfig]
+enabled = false
 source = "~/.gitconfig"
 target = "/home/sandbox/.gitconfig"
 mode = "ro"
@@ -79,6 +80,7 @@ optional = true
 # Enable a group in an environment with `[resources.allow.<name>] enabled = true`,
 # or add new groups there.
 [resources.allow.conda]
+enabled = false
 domains = ["conda.anaconda.org", "repo.prefix.dev", "prefix.dev", "fast.prefix.dev"]
 
 [resources.allow.pypi]
