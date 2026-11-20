@@ -1,8 +1,9 @@
-"""Command line interface: ``pixi run rebox <command> ...``."""
+"""Command line interface: ``rebox <command> ...``."""
 
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import subprocess
 import sys
@@ -57,10 +58,21 @@ platforms = ["linux-64"]
 """
 
 
+def cmd_init(args: argparse.Namespace) -> int:
+    from .init import init_project
+    directory = Path(args.directory).resolve()
+    notes = init_project(directory, examples=args.examples, channels=args.channel, pixi=not args.no_pixi)
+    print(f"Created a rebox project in {directory}")
+    for note in notes:
+        print(f"  {note}")
+    print("Next: rebox new NAME [RECIPE...], then rebox build NAME")
+    return 0
+
+
 def _default_sources(project: Project):
     from .recipes import load_sources
     defaults = load_toml(project.defaults_file) if project.defaults_file.is_file() else {}
-    return load_sources(project, defaults.get("sources") or {"builtin": {"path": "recipes"}})
+    return load_sources(project, defaults.get("sources") or {"builtin": {"builtin": True}})
 
 
 def cmd_sources(project: Project, args: argparse.Namespace) -> int:
@@ -117,7 +129,7 @@ def cmd_new(project: Project, args: argparse.Namespace) -> int:
     ))
     (env_dir / "workspace" / "pixi.toml").write_text(WORKSPACE_TEMPLATE.format(name=args.name))
     (env_dir / ".gitignore").write_text(".state/\nworkspace/.pixi/\n")
-    print(f"Created {env_dir}. Edit sandbox.toml, then run: pixi run rebox build {args.name}")
+    print(f"Created {env_dir}. Edit sandbox.toml, then run: rebox build {args.name}")
     return 0
 
 
@@ -211,7 +223,7 @@ def cmd_outdated(project: Project, args: argparse.Namespace) -> int:
         target = str(recipe.version) if changed else "="
         note = "" if newest == recipe.version else "  (excluded by a constraint)"
         print(f"{recipe.source + ':' + recipe.name:<26} {old:<10} {target:<10} {newest}{note}")
-    print(f"\n{outdated} recipe(s) can be updated" + (f": pixi run rebox update {env.name}" if outdated else ""))
+    print(f"\n{outdated} recipe(s) can be updated" + (f": rebox update {env.name}" if outdated else ""))
     return 0
 
 
@@ -270,7 +282,7 @@ def cmd_export(project: Project, args: argparse.Namespace) -> int:
     env = load_env(project, args.name, check_binds=False)
     out = export_env(env, Path(args.output).resolve())
     print(f"Exported '{env.name}' to {out}")
-    print(f"Rebuild elsewhere with: cd {out} && pixi run rebox build {env.name}")
+    print(f"Rebuild elsewhere with: cd {out} && rebox build {env.name}")
     return 0
 
 
@@ -296,6 +308,14 @@ def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="rebox", description="rebox (research sandbox): rootless Apptainer + Pixi sandboxes")
     p.add_argument("--version", action="version", version=f"rebox {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
+
+    s = sub.add_parser("init", help="create a rebox project (defaults.toml, recipes/, envs/, pixi.toml)")
+    s.add_argument("directory", nargs="?", default=".")
+    s.add_argument("--examples", action="store_true", help="add the example environments")
+    s.add_argument("--channel", action="append", default=[],
+                   help="conda channel providing rebox, added to pixi.toml (repeatable)")
+    s.add_argument("--no-pixi", action="store_true", help="do not create pixi.toml")
+    s.set_defaults(func=cmd_init, needs_project=False)
 
     sub.add_parser("list", help="list recipes (all versions) and environments").set_defaults(func=cmd_list)
 
@@ -368,10 +388,25 @@ def parser() -> argparse.ArgumentParser:
     return p
 
 
+def _expose_environment_tools() -> None:
+    """Make apptainer, mksquashfs, git... of rebox's own environment reachable.
+
+    With `pixi global install rebox`, only the `rebox` command is exposed; the
+    tools it runs live next to the Python interpreter.
+    """
+    bindir = str(Path(sys.prefix) / "bin")
+    path = os.environ.get("PATH", "")
+    if bindir not in path.split(os.pathsep):
+        os.environ["PATH"] = bindir + (os.pathsep + path if path else "")
+
+
 def main(argv: list[str] | None = None) -> int:
     sys.stdout.reconfigure(line_buffering=True)
+    _expose_environment_tools()
     args = parser().parse_args(argv)
     try:
+        if not getattr(args, "needs_project", True):
+            return args.func(args)
         project = Project.discover()
         return args.func(project, args)
     except ConfigError as exc:

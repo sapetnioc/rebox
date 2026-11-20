@@ -66,7 +66,8 @@ class Project:
                 return cls(candidate)
         raise ConfigError(
             "Could not find a rebox project (no defaults.toml in the current "
-            "directory or its parents). Set REBOX_ROOT to point to it."
+            "directory or its parents). Create one with `rebox init`, or set "
+            "REBOX_ROOT to point to it."
         )
 
 
@@ -404,7 +405,7 @@ def load_env(
         )
 
     requested = [str(r) for r in (*build.get("default_recipes", []), *build.get("recipes", []))]
-    sources_config = data.get("sources") or {"builtin": {"path": "recipes"}}
+    sources_config = data.get("sources") or {"builtin": {"builtin": True}}
 
     recipes: list[Any] = []
     sources: dict[str, Any] = {}

@@ -32,6 +32,9 @@ def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Project:
     monkeypatch.setattr(run_mod, "user_systemd_available", lambda: False)
     (tmp_path / "data").mkdir()
     write(tmp_path / "defaults.toml", f"""
+        [sources.builtin]
+        path = "recipes"
+
         [build]
         base_image = "docker://debian:12-slim"
         default_recipes = ["base"]

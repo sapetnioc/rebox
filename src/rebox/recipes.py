@@ -32,7 +32,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from . import __version__
 from .config import ConfigError, Project, load_toml, sha256_text
+
+BUILTIN_RECIPES = Path(__file__).resolve().parent / "data" / "recipes"
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 RECIPE_KEYS = {"description", "requires", "args", "environment", "post", "runscript"}
@@ -299,6 +302,21 @@ class LocalSource(Source):
         return {"source_type": "local", "source_path": self.display_path}
 
 
+class BuiltinSource(LocalSource):
+    """The recipes shipped inside the rebox package."""
+
+    kind = "builtin"
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name, BUILTIN_RECIPES, "")
+
+    def describe(self) -> str:
+        return f"builtin (rebox {__version__})"
+
+    def lock_info(self) -> dict[str, str]:
+        return {"source_type": "builtin", "rebox_version": __version__}
+
+
 def _git(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "LC_ALL": "C"}
     try:
@@ -382,7 +400,7 @@ class GitSource(Source):
         return info
 
 
-SOURCE_KEYS = {"path", "git", "ref", "subdir", "enabled", "description"}
+SOURCE_KEYS = {"path", "git", "builtin", "ref", "subdir", "enabled", "description"}
 
 
 def load_sources(project: Project, config: dict[str, Any]) -> dict[str, Source]:
@@ -398,9 +416,12 @@ def load_sources(project: Project, config: dict[str, Any]) -> dict[str, Source]:
             continue
         if not NAME_RE.match(name):
             raise ConfigError(f"Invalid source name '{name}'")
-        if ("path" in spec) == ("git" in spec):
-            raise ConfigError(f"sources.{name}: set exactly one of 'path' or 'git'")
-        if "path" in spec:
+        kinds = [k for k in ("path", "git", "builtin") if spec.get(k)]
+        if len(kinds) != 1:
+            raise ConfigError(f"sources.{name}: set exactly one of 'path', 'git' or 'builtin = true'")
+        if kinds == ["builtin"]:
+            sources[name] = BuiltinSource(name)
+        elif "path" in spec:
             from .config import expand_path
             sources[name] = LocalSource(name, expand_path(spec["path"], project.root), spec["path"])
         else:

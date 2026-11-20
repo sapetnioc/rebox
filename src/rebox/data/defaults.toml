@@ -3,9 +3,17 @@
 #   path = "dir"          local directory (relative to the project root)
 #   git  = "url"          git repository, with optional ref (branch, tag or
 #                         commit, default "main") and subdir
+#   builtin = true        the recipes shipped with rebox
 # Environments can add sources or disable one with `enabled = false`.
-[sources.builtin]
+
+# Your own recipes (created by `rebox init`); listed first so that they can
+# override built-in recipes with the same name.
+[sources.local]
 path = "recipes"
+
+# Recipes shipped with rebox.
+[sources.builtin]
+builtin = true
 
 # [sources.team]
 # git = "https://git.example.org/team/sandbox-recipes.git"

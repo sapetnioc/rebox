@@ -5,3 +5,4 @@ envs/*/workspace/.pixi/
 *-bundle.tar
 *-bundle.tar.gz
 .sources/
+dist/

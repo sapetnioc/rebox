@@ -38,7 +38,7 @@ exec "$@"
 def apptainer_bin() -> str:
     path = shutil.which("apptainer")
     if not path:
-        raise ConfigError("apptainer not found on PATH. Run the tool through `pixi run rebox ...`.")
+        raise ConfigError("apptainer not found on PATH. Run the tool through `rebox ...`.")
     return path
 
 

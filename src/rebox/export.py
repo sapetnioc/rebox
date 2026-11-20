@@ -19,8 +19,6 @@ from .build import render_def
 from .config import ConfigError, SandboxEnv
 from .run import apptainer_bin
 
-PACKAGE_DIR = Path(__file__).resolve().parent
-
 DEFAULTS_PLACEHOLDER = """\
 # This project was exported by rebox. Every exported environment is
 # fully resolved (inherit_defaults = false), so no defaults are needed here.
@@ -42,7 +40,7 @@ echo "Installed. Use ./rebox to manage environments, e.g.: ./rebox shell {name}"
 
 WRAPPER_SH = """\
 #!/bin/sh
-# Run rebox with the host tools unpacked by install.sh.
+# Run rebox from the host environment unpacked by install.sh.
 HERE=$(cd "$(dirname "$0")" && pwd)
 if [ ! -f "$HERE/.host/activate.sh" ]; then
     echo "Run $HERE/install.sh first." >&2
@@ -50,8 +48,7 @@ if [ ! -f "$HERE/.host/activate.sh" ]; then
 fi
 . "$HERE/.host/activate.sh"
 export REBOX_ROOT="$HERE"
-export PYTHONPATH="$HERE/src${PYTHONPATH:+:$PYTHONPATH}"
-exec python -m rebox "$@"
+exec rebox "$@"
 """
 
 
@@ -137,12 +134,15 @@ def export_env(env: SandboxEnv, out: Path) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     root = env.project.root
 
-    # Host tooling
-    for name in ("pixi.toml", "pixi.lock", "README.md"):
+    # Host tooling: the project's Pixi environment (which provides rebox)
+    from .init import GITIGNORE, pixi_manifest, project_channels
+    for name in ("pixi.toml", "pixi.lock"):
         if (root / name).is_file():
             shutil.copy2(root / name, out / name)
-    shutil.copytree(PACKAGE_DIR, out / "src" / "rebox", ignore=shutil.ignore_patterns("__pycache__"))
+    if not (out / "pixi.toml").is_file():
+        (out / "pixi.toml").write_text(pixi_manifest(out.name, project_channels()))
     (out / "defaults.toml").write_text(DEFAULTS_PLACEHOLDER)
+    (out / ".gitignore").write_text(GITIGNORE)
 
     # Exact versions of the recipes used, one local source per original source
     for recipe in env.recipes:
@@ -181,8 +181,14 @@ def pack_env(env: SandboxEnv, output: Path, *, include_home: bool = False) -> Pa
     if not pixi_pack:
         raise ConfigError("pixi-pack not found on PATH (it is a dependency of the host Pixi environment)")
     root = env.project.root
+    from .init import has_rebox_dependency
+    if not has_rebox_dependency(root / "pixi.toml"):
+        raise ConfigError(
+            f"{root / 'pixi.toml'} must exist and depend on rebox: the offline bundle ships that "
+            "Pixi environment (see `rebox init`)"
+        )
     if not (root / "pixi.lock").is_file():
-        raise ConfigError("The project has no pixi.lock; run `pixi install` first")
+        raise ConfigError("The project has no pixi.lock; run `pixi install` in it first")
 
     bundle_name = output.name.removesuffix(".tar").removesuffix(".tar.gz")
     with tempfile.TemporaryDirectory(prefix="sandbox-pack-") as tmp:

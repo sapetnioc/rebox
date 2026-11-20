@@ -1,0 +1,35 @@
+[project]
+name = "rebox"
+version = "0.3.0"
+description = "rebox (research sandbox): rootless sandbox environments built from reusable recipes, Apptainer and Pixi"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Yann Cointepas" }]
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+]
+# Runtime tools (apptainer, squashfs-tools, git, pixi-pack) are not Python
+# packages: they are declared as conda run-dependencies in pixi.toml.
+dependencies = ["tomli-w>=1.0"]
+
+[project.scripts]
+rebox = "rebox.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sapetnioc/rebox"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rebox"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/rebox", "tests", "README.md", "pixi.toml", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
