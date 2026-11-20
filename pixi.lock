@@ -63,7 +63,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.5-h781a0a9_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.49-h8b3dc9c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/perl-5.44.0-1_h7cc23a3_perl5.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/pixi-pack-0.7.12-h2d90d6e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.15.2-h6e52b48_100_cp315.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/squashfs-tools-4.7.5-hb1a7579_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/squashfuse-0.6.5-h77f6adf_1.conda
@@ -118,7 +117,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/openssl-3.6.5-he6ad1d5_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/pcre2-10.49-he574923_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/perl-5.44.0-1_h5bc82ec_perl5.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/pixi-pack-0.7.12-h9b2e256_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/python-3.15.2-h0c7c799_100_cp315.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/squashfs-tools-4.7.5-h36c0fa0_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/squashfuse-0.6.5-hc1f66f0_1.conda
@@ -178,7 +176,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.5-h781a0a9_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.49-h8b3dc9c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/perl-5.44.0-1_h7cc23a3_perl5.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/pixi-pack-0.7.12-h2d90d6e_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.15.2-h6e52b48_100_cp315.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/squashfs-tools-4.7.5-hb1a7579_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/squashfuse-0.6.5-h77f6adf_1.conda
@@ -242,7 +239,6 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/openssl-3.6.5-he6ad1d5_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/pcre2-10.49-he574923_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/perl-5.44.0-1_h5bc82ec_perl5.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/pixi-pack-0.7.12-h9b2e256_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/python-3.15.2-h0c7c799_100_cp315.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/squashfs-tools-4.7.5-h36c0fa0_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/squashfuse-0.6.5-hc1f66f0_1.conda
@@ -905,20 +901,6 @@ packages:
     - perl >=5.44.0,<6.0a0
   size: 11438995
   timestamp: 1790621296165
-- conda: https://conda.anaconda.org/conda-forge/linux-64/pixi-pack-0.7.12-h2d90d6e_1.conda
-  sha256: 0e73eeeafa2ae0afda8f967224975c6abc81f461a6545b5274f011d68151e191
-  md5: e08c4fdcb583839f8e60af6cdc70473c
-  depends:
-  - libgcc >=15
-  - __glibc >=2.17,<3.0.a0
-  - openssl >=3.5.9,<4.0a0
-  constrains:
-  - __glibc >=2.17
-  license: BSD-3-Clause
-  license_family: BSD
-  run_exports: {}
-  size: 5754476
-  timestamp: 1794091062449
 - conda: https://conda.anaconda.org/conda-forge/linux-64/python-3.15.2-h6e52b48_100_cp315.conda
   build_number: 100
   sha256: dd6fdef748df5636029673a834ca3632ce44c86d71e4986d70bcdb2ae5607a25
@@ -1603,19 +1585,6 @@ packages:
     - perl >=5.44.0,<6.0a0
   size: 11484751
   timestamp: 1790621051317
-- conda: https://conda.anaconda.org/conda-forge/linux-aarch64/pixi-pack-0.7.12-h9b2e256_1.conda
-  sha256: a5dafee3db73a4df4b991f5fcec982397c0d9bfde40a5aa3d2e17f52d54bc3ea
-  md5: 8bc0064d1ec0360ad20a700a0abefe07
-  depends:
-  - libgcc >=15
-  - openssl >=3.5.9,<4.0a0
-  constrains:
-  - __glibc >=2.17
-  license: BSD-3-Clause
-  license_family: BSD
-  run_exports: {}
-  size: 6189146
-  timestamp: 1794091068288
 - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/python-3.15.2-h0c7c799_100_cp315.conda
   build_number: 100
   sha256: 788a8c701af3fb86e7e7d8f40335804959e796c705b7b7e9a409de2eea8ded18

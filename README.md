@@ -7,7 +7,7 @@ combined with a **Pixi workspace** in which you can keep installing conda
 packages after the sandbox starts.
 
 The only requirement on the host is [Pixi](https://pixi.sh). rebox is a conda
-package; its dependencies (Python, Apptainer, squashfs-tools, pixi-pack, git)
+package; its dependencies (Python, Apptainer, squashfs-tools, git)
 come from conda-forge.
 
 ## Installation
@@ -43,6 +43,7 @@ rebox shell my-env                     # interactive Pixi shell in the sandbox
 rebox run my-env -- python x.py
 rebox export my-env -o ../my-env-spec  # reproducible configuration
 rebox pack my-env                      # offline bundle
+rebox unpack my-env-bundle.tar         # redeploy it (on another machine)
 ```
 
 ## Host requirements
@@ -426,26 +427,25 @@ others (version and sha256) and also record the rebox version they came from.
 ## Offline bundle
 
 ```
-rebox pack NAME -o NAME-bundle.tar
+rebox pack NAME -o NAME-bundle.tar          # on a machine where NAME is built
+rebox unpack NAME-bundle.tar [DIRECTORY]    # on the target machine, offline
+cd NAME-bundle && rebox shell NAME
 ```
 
-The bundle contains the exported configuration, the built image, the installed
-workspace (`.pixi` included; conda prefixes stay valid since the workspace is
-always mounted at `/rebox`), and an exact copy of the conda environment
-rebox runs in (rebox, Apptainer, Python...: every package pinned to its
-version, build and channel, read from `conda-meta`), locked with `pixi lock`
-and packed by `pixi-pack` as a self-extracting executable. rebox must
-therefore be installed as a conda package (globally or in a Pixi
-environment), and the channels it came from must be reachable when packing. The persistent home is left out unless you pass
+The bundle contains only the environment: the exported configuration (with
+the exact recipe versions), the built image, the installed workspace (`.pixi`
+included; conda prefixes stay valid since the workspace is always mounted at
+`/rebox`) and a `rebox-bundle.toml` manifest (environment name, rebox version,
+image sha256). The persistent home is left out unless you pass
 `--include-home` (it may contain credentials).
 
-On the target machine (no internet, no Pixi, no rebox needed):
-
-```
-tar xf NAME-bundle.tar && cd NAME-bundle
-./install.sh
-./rebox shell NAME
-```
+rebox itself is not in the bundle: it must be installed on both machines.
+For an offline target, install it from a local copy of the channels (e.g. a
+directory channel made with `pixi publish --to file:///path`, plus the
+conda-forge packages it needs). `rebox unpack` needs no network: it checks the
+manifest and the image checksum, extracts the bundle into a new directory
+(`./<bundle name>` by default) which is a normal rebox project, and prints a
+note if the bundle was made with a different rebox version.
 
 ## Security notes
 

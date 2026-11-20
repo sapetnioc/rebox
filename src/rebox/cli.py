@@ -293,8 +293,21 @@ def cmd_pack(project: Project, args: argparse.Namespace) -> int:
     pack_env(env, output, include_home=args.include_home)
     size = output.stat().st_size / 1024 ** 2
     print(f"Bundle written: {output} ({size:.0f} MB)")
-    print("On the target machine:")
-    print(f"  tar xf {output.name} && cd {output.name.split('.tar')[0]} && ./install.sh && ./rebox shell {env.name}")
+    print(f"On the target machine (with rebox installed): rebox unpack {output.name}")
+    return 0
+
+
+def cmd_unpack(args: argparse.Namespace) -> int:
+    from .export import unpack_bundle
+    from . import __version__
+    target, manifest = unpack_bundle(Path(args.bundle).resolve(),
+                                     Path(args.directory) if args.directory else None)
+    packed_with = manifest.get("rebox_version", "?")
+    if packed_with.split(".")[:2] != __version__.split("+")[0].split(".")[:2]:
+        print(f"note: bundle made with rebox {packed_with}, unpacked with rebox {__version__}")
+    name = manifest["environment"]
+    print(f"Unpacked environment '{name}' into {target}")
+    print(f"Next: cd {target} && rebox shell {name}")
     return 0
 
 
@@ -371,12 +384,17 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("-o", "--output", required=True, help="output directory")
     s.set_defaults(func=cmd_export)
 
-    s = sub.add_parser("pack", help="create an offline bundle (image + Pixi envs + tools)")
+    s = sub.add_parser("pack", help="create an offline bundle (configuration, image, Pixi workspace)")
     s.add_argument("name")
     s.add_argument("-o", "--output", help="output tarball (.tar or .tar.gz)")
     s.add_argument("--include-home", action="store_true",
                    help="include the persistent home directory (may contain secrets)")
     s.set_defaults(func=cmd_pack)
+
+    s = sub.add_parser("unpack", help="unpack a bundle made by `rebox pack` (no network needed)")
+    s.add_argument("bundle", help="bundle tarball")
+    s.add_argument("directory", nargs="?", help="target directory (default: ./<bundle name>)")
+    s.set_defaults(func=cmd_unpack, needs_project=False)
 
     s = sub.add_parser("clean", help="remove the built image")
     s.add_argument("name")

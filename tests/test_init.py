@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ import pytest
 from rebox import __version__
 from rebox.cli import main
 from rebox.config import ConfigError, Project, load_env
-from rebox.hostenv import host_manifest, installed_packages
 from rebox.init import init_project
 from rebox.recipes import read_locked
 
@@ -76,33 +74,59 @@ def test_builtin_lock_entry(project_dir, monkeypatch):
     assert set(read_locked(env.lock_file)) == {("builtin", "base"), ("builtin", "pixi")}
 
 
-def fake_prefix(tmp_path: Path, with_rebox: bool = True) -> Path:
-    meta = tmp_path / "prefix" / "conda-meta"
-    meta.mkdir(parents=True)
-    records = [
-        {"name": "python", "version": "3.13.1", "build": "h1_0", "subdir": "linux-64",
-         "channel": "https://conda.anaconda.org/conda-forge"},
-        {"name": "apptainer", "version": "1.5.4", "build": "h2_0", "subdir": "linux-64",
-         "url": "https://conda.anaconda.org/conda-forge/linux-64/apptainer-1.5.4-h2_0.conda"},
-    ]
-    if with_rebox:
-        records.append({"name": "rebox", "version": "0.4.0", "build": "pyh_0", "subdir": "noarch",
-                        "channel": "file:///srv/channel"})
-    for r in records:
-        (meta / f"{r['name']}-{r['version']}-{r['build']}.json").write_text(json.dumps(r))
-    (meta / "history").write_text("")
-    return tmp_path / "prefix"
+def test_pack_and_unpack(project_dir, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("rebox.export.apptainer_version", lambda: "test")
+    init_project(project_dir)
+    add_env(project_dir)
+    env = load_env(Project(project_dir), "e")
+    env.image.parent.mkdir(parents=True)
+    env.image.write_bytes(b"fake image")
+    (env.workspace / "pixi.toml").parent.mkdir(parents=True)
+    (env.workspace / "pixi.toml").write_text("[workspace]\n")
+    (env.workspace / ".pixi" / "envs" / "default").mkdir(parents=True)
+    (env.home_dir / "secret").parent.mkdir(parents=True)
+    (env.home_dir / "secret").write_text("token")
+
+    from rebox.export import pack_env, unpack_bundle
+    bundle = pack_env(env, tmp_path / "e-bundle.tar")
+    import tarfile
+    names = tarfile.open(bundle).getnames()
+    assert "e-bundle/rebox-bundle.toml" in names
+    assert "e-bundle/envs/e/.state/image.sif" in names
+    assert "e-bundle/envs/e/workspace/.pixi/envs/default" in names
+    assert not any("secret" in n for n in names)  # home left out by default
+    assert not any(n.endswith(("host-env.sh", "install.sh")) for n in names)
+
+    monkeypatch.chdir(tmp_path)
+    assert main(["unpack", str(bundle), "deployed"]) == 0
+    assert "rebox shell e" in capsys.readouterr().out
+    deployed = Project(tmp_path / "deployed")
+    unpacked = load_env(deployed, "e")
+    assert unpacked.image.read_bytes() == b"fake image"
+    assert [r.ref for r in unpacked.recipes] == [r.ref for r in env.recipes]
+
+    with pytest.raises(ConfigError, match="not empty"):
+        unpack_bundle(bundle, tmp_path / "deployed")
 
 
-def test_host_manifest_pins_the_running_environment(tmp_path):
-    manifest = host_manifest(installed_packages(fake_prefix(tmp_path)))
-    assert manifest["workspace"]["channels"] == ["file:///srv/channel", "https://conda.anaconda.org/conda-forge"]
-    assert manifest["workspace"]["platforms"] == ["linux-64"]
-    assert manifest["dependencies"]["apptainer"] == {
-        "version": "==1.5.4", "build": "h2_0", "channel": "https://conda.anaconda.org/conda-forge"}
-    assert manifest["dependencies"]["rebox"]["channel"] == "file:///srv/channel"
+def test_unpack_rejects_corrupted_or_foreign_archives(tmp_path):
+    import io, tarfile
+    from rebox.export import unpack_bundle
+    foreign = tmp_path / "foreign.tar"
+    with tarfile.open(foreign, "w") as tar:
+        data = b"hello"
+        info = tarfile.TarInfo("x/readme.txt"); info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
+    with pytest.raises(ConfigError, match="not a rebox bundle"):
+        unpack_bundle(foreign, tmp_path / "out")
 
-
-def test_pack_needs_rebox_as_a_conda_package(tmp_path):
-    with pytest.raises(ConfigError, match="not installed as a conda package"):
-        host_manifest(installed_packages(fake_prefix(tmp_path, with_rebox=False)))
+    bad = tmp_path / "bad.tar"
+    manifest = b'format = 1\nenvironment = "e"\nimage_sha256 = "0"\n'
+    image = b"tampered"
+    with tarfile.open(bad, "w") as tar:
+        for name, data in (("b/rebox-bundle.toml", manifest), ("b/envs/e/.state/image.sif", image)):
+            info = tarfile.TarInfo(name); info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    with pytest.raises(ConfigError, match="corrupted"):
+        unpack_bundle(bad, tmp_path / "out2")
+    assert not (tmp_path / "out2").exists()

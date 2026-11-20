@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import shutil
-import stat
 import subprocess
 import tarfile
 import tempfile
@@ -24,33 +23,6 @@ DEFAULTS_PLACEHOLDER = """\
 # fully resolved (inherit_defaults = false), so no defaults are needed here.
 # Add [build] / [resources] tables to define defaults for new environments.
 """
-
-INSTALL_SH = """\
-#!/bin/sh
-# Install the host tools (Python, Apptainer...) of this offline bundle.
-# No network access is needed.
-set -eu
-HERE=$(cd "$(dirname "$0")" && pwd)
-cd "$HERE"
-if [ ! -f "$HERE/.host/activate.sh" ]; then
-    ./host-env.sh --output-directory "$HERE/.host" --env-name env --quiet
-fi
-echo "Installed. Use ./rebox to manage environments, e.g.: ./rebox shell {name}"
-"""
-
-WRAPPER_SH = """\
-#!/bin/sh
-# Run rebox from the host environment unpacked by install.sh.
-HERE=$(cd "$(dirname "$0")" && pwd)
-if [ ! -f "$HERE/.host/activate.sh" ]; then
-    echo "Run $HERE/install.sh first." >&2
-    exit 1
-fi
-. "$HERE/.host/activate.sh"
-export REBOX_ROOT="$HERE"
-exec rebox "$@"
-"""
-
 
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -161,18 +133,21 @@ def export_env(env: SandboxEnv, out: Path) -> Path:
     return out
 
 
-def _make_executable(path: Path) -> None:
-    path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+BUNDLE_MANIFEST = "rebox-bundle.toml"
+BUNDLE_FORMAT = 1
 
 
 def pack_env(env: SandboxEnv, output: Path, *, include_home: bool = False) -> Path:
-    """Create a tarball that redeploys ``env`` on a machine without internet."""
+    """Create a tarball that redeploys ``env`` on a machine without internet.
+
+    The bundle holds the environment only (exported configuration, image,
+    installed workspace); rebox itself must be installed on the target and
+    unpacks it with `rebox unpack`.
+    """
     if not env.image.is_file():
         raise ConfigError(f"Image not built yet: run `rebox build {env.name}` first")
-    from .hostenv import host_manifest, installed_packages
-    host_manifest(installed_packages())  # fail early if rebox is not a conda package here
-    bundle_name = output.name.removesuffix(".tar").removesuffix(".tar.gz")
-    with tempfile.TemporaryDirectory(prefix="sandbox-pack-") as tmp:
+    bundle_name = output.name.removesuffix(".gz").removesuffix(".tar")
+    with tempfile.TemporaryDirectory(prefix="rebox-pack-") as tmp:
         stage = Path(tmp) / bundle_name
         export_env(env, stage)
         env_out = stage / "envs" / env.name
@@ -188,14 +163,16 @@ def pack_env(env: SandboxEnv, output: Path, *, include_home: bool = False) -> Pa
             shutil.copytree(env.home_dir, state / "home", symlinks=True)
         _relock(stage, env.name)  # now records the image checksum too
 
-        # The conda environment rebox runs in, as a self-extracting archive
-        from .hostenv import pack_host_environment
-        pack_host_environment(stage / "host-env.sh", Path(tmp) / "host-manifest")
-        _make_executable(stage / "host-env.sh")
-        (stage / "install.sh").write_text(INSTALL_SH.format(name=env.name))
-        (stage / "rebox").write_text(WRAPPER_SH)
-        _make_executable(stage / "install.sh")
-        _make_executable(stage / "rebox")
+        (stage / BUNDLE_MANIFEST).write_text(
+            "# rebox offline bundle: unpack it with `rebox unpack <bundle>`.\n" + tomli_w.dumps({
+                "format": BUNDLE_FORMAT,
+                "environment": env.name,
+                "rebox_version": __version__,
+                "created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                "image_sha256": file_sha256(state / "image.sif"),
+                "includes_home": bool(include_home and env.home_dir.is_dir()),
+            })
+        )
 
         output.parent.mkdir(parents=True, exist_ok=True)
         print(f"Writing {output}...")
@@ -203,3 +180,49 @@ def pack_env(env: SandboxEnv, output: Path, *, include_home: bool = False) -> Pa
         with tarfile.open(output, mode) as tar:
             tar.add(stage, arcname=bundle_name)
     return output
+
+
+def unpack_bundle(bundle: Path, target: Path | None = None) -> tuple[Path, dict[str, Any]]:
+    """Extract a bundle made by `rebox pack` into a new project directory."""
+    import tomllib
+
+    if not bundle.is_file():
+        raise ConfigError(f"Bundle not found: {bundle}")
+    try:
+        tar = tarfile.open(bundle)
+    except tarfile.TarError as exc:
+        raise ConfigError(f"{bundle} is not a rebox bundle: {exc}") from exc
+    with tar:
+        members = tar.getmembers()
+        tops = {m.name.split("/", 1)[0] for m in members}
+        if len(tops) != 1:
+            raise ConfigError(f"{bundle} is not a rebox bundle (several top-level entries)")
+        top = tops.pop()
+        try:
+            manifest = tomllib.loads(tar.extractfile(f"{top}/{BUNDLE_MANIFEST}").read().decode())
+        except (KeyError, AttributeError, tomllib.TOMLDecodeError) as exc:
+            raise ConfigError(f"{bundle} is not a rebox bundle (no valid {BUNDLE_MANIFEST})") from exc
+        if manifest.get("format") != BUNDLE_FORMAT:
+            raise ConfigError(f"Unsupported bundle format {manifest.get('format')!r} "
+                              f"(this rebox reads format {BUNDLE_FORMAT})")
+        target = (target or Path.cwd() / top).resolve()
+        if target.exists() and any(target.iterdir()):
+            raise ConfigError(f"{target} exists and is not empty")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".rebox-unpack-", dir=target.parent) as tmp:
+            print(f"Extracting {bundle}...", flush=True)
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(tmp, filter="data")  # refuses absolute paths, .., devices...
+            else:  # Python 3.11 before 3.11.4
+                for member in members:
+                    if member.name.startswith("/") or ".." in Path(member.name).parts:
+                        raise ConfigError(f"Unsafe path in bundle: {member.name}")
+                tar.extractall(tmp)
+            extracted = Path(tmp) / top
+            image = extracted / "envs" / manifest["environment"] / ".state" / "image.sif"
+            if not image.is_file() or file_sha256(image) != manifest.get("image_sha256"):
+                raise ConfigError("The image in the bundle is missing or corrupted (sha256 mismatch)")
+            if target.exists():
+                target.rmdir()
+            extracted.rename(target)
+    return target, manifest
