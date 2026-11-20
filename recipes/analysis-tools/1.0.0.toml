@@ -1,0 +1,6 @@
+description = "Tools to observe untrusted software: strace, ltrace, gdb, file, binutils, lsof"
+requires = ["base"]
+
+post = '''
+apt-install strace ltrace gdb file binutils lsof xxd psmisc iproute2
+'''

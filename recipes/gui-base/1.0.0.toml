@@ -1,0 +1,24 @@
+description = "Runtime libraries for GUI/Electron apps (GTK, NSS, X11, fonts)"
+requires = ["base"]
+
+post = '''
+apt-get update
+# Same libraries as the dependencies of the official VS Code .deb package.
+# Debian 13+ / Ubuntu 24.04+ renamed some of them with a "t64" suffix: use
+# that name when the distribution has it.
+packages=""
+for pkg in \
+    libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcairo2 libcups2 \
+    libcurl4 libdbus-1-3 libexpat1 libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 \
+    libpango-1.0-0 libsecret-1-0 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 \
+    libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxkbfile1 libxrandr2 \
+    libxshmfence1 libxss1 libdrm2 libgl1 xdg-utils fonts-dejavu-core
+do
+    if apt-cache show "${pkg}t64" >/dev/null 2>&1; then
+        packages="$packages ${pkg}t64"
+    else
+        packages="$packages $pkg"
+    fi
+done
+apt-install $packages
+'''

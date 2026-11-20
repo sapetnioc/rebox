@@ -1,0 +1,91 @@
+# Recipe sources, searched in this order for recipes referenced without a
+# source prefix. Each source holds <recipe>/<version>.toml files.
+#   path = "dir"          local directory (relative to the project root)
+#   git  = "url"          git repository, with optional ref (branch, tag or
+#                         commit, default "main") and subdir
+# Environments can add sources or disable one with `enabled = false`.
+[sources.builtin]
+path = "recipes"
+
+# [sources.team]
+# git = "https://git.example.org/team/sandbox-recipes.git"
+# ref = "main"
+# subdir = "recipes"
+
+# Defaults applied to every environment in envs/, unless the environment sets
+# `inherit_defaults = false`. Tables are merged; values set in an environment's
+# sandbox.toml override the ones below. A bind defined here can be turned off in
+# an environment with `[resources.binds.<name>] enabled = false`.
+
+[build]
+# Base image of every sandbox. Pin it by digest for reproducible builds, e.g.
+# "docker://debian@sha256:<digest>". localimage://path/to/base.sif also works.
+base_image = "docker://debian:12-slim"
+# Recipes always installed (before the environment's own recipes).
+default_recipes = ["base", "pixi"]
+
+[resources]
+# "none": no network at all (loopback only).
+# "allowlist": no direct network; HTTP(S) through a host proxy that only lets
+#              through the domains of the enabled [resources.allow.*] groups.
+# "host": share the host network.
+network = "none"
+# Resource limits. 0 or "" means unlimited.
+cpus = 2
+memory = "4G"
+pids = 1024
+# How limits are enforced: "auto" (systemd-run --user if available, otherwise
+# apptainer's --cpus/--memory), "systemd-run", "apptainer" or "none".
+limits_backend = "auto"
+# "persistent": envs/<name>/.state/home is the sandbox home (kept between runs).
+# "ephemeral": a fresh empty home for every run.
+home = "persistent"
+# Allow writes anywhere in the container filesystem (discarded on exit).
+writable_tmpfs = true
+gpu = false
+hostname = "sandbox"
+
+# Host environment variables passed to the sandbox (${VAR} or ${VAR:-default}).
+# Everything else from the host environment is removed.
+[resources.env]
+TERM = "${TERM:-xterm-256color}"
+
+# Host paths visible in every sandbox. envs/<name>/workspace is always mounted
+# read-write at /sandbox and does not need to be listed.
+[resources.binds.gitconfig]
+source = "~/.gitconfig"
+target = "/home/sandbox/.gitconfig"
+mode = "ro"
+optional = true
+
+# Domain groups used when network = "allowlist". "*.example.com" matches any
+# subdomain of example.com (not example.com itself). ports defaults to [80, 443].
+# Enable a group in an environment with `[resources.allow.<name>] enabled = true`,
+# or add new groups there.
+[resources.allow.conda]
+domains = ["conda.anaconda.org", "repo.prefix.dev", "prefix.dev", "fast.prefix.dev"]
+
+[resources.allow.pypi]
+enabled = false
+domains = ["pypi.org", "files.pythonhosted.org"]
+
+[resources.allow.npm]
+enabled = false
+domains = ["registry.npmjs.org"]
+
+[resources.allow.github]
+enabled = false
+domains = ["github.com", "*.github.com", "*.githubusercontent.com", "codeload.github.com"]
+
+[resources.allow.anthropic]
+enabled = false
+domains = ["api.anthropic.com", "console.anthropic.com", "claude.ai", "statsig.anthropic.com"]
+
+[resources.allow.vscode-marketplace]
+enabled = false
+domains = ["marketplace.visualstudio.com", "*.gallery.vsassets.io", "*.gallerycdn.vsassets.io",
+           "*.vscode-unpkg.net", "*.vscode-cdn.net", "update.code.visualstudio.com"]
+
+[resources.allow.open-vsx]
+enabled = false
+domains = ["open-vsx.org", "*.open-vsx.org", "openvsxorg.blob.core.windows.net"]

@@ -1,0 +1,6 @@
+description = "C/C++ build toolchain (gcc, make, pkg-config)"
+requires = ["base"]
+
+post = '''
+apt-install build-essential pkg-config
+'''

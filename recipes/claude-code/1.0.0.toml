@@ -1,0 +1,17 @@
+description = "Claude Code CLI agent (npm package @anthropic-ai/claude-code)"
+requires = ["nodejs"]
+
+post = '''
+npm install -g --no-fund --no-audit "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+npm cache clean --force
+claude --version || true
+'''
+
+[args]
+# Pin a version (e.g. "2.0.30") for reproducible images.
+CLAUDE_CODE_VERSION = "latest"
+
+
+[environment]
+# Updates are done by rebuilding the image, not from inside the sandbox.
+DISABLE_AUTOUPDATER = "1"

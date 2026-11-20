@@ -1,0 +1,32 @@
+description = "Claude Code agent working on a single project directory"
+
+[build]
+recipes = ["claude-code"]
+
+[build.recipe_args.claude-code]
+CLAUDE_CODE_VERSION = "latest"
+
+[resources]
+# Only the domains of the enabled allow groups are reachable.
+network = "allowlist"
+cpus = 4
+memory = "8G"
+
+# The only host project the agent can modify.
+[resources.binds.project]
+source = "~/code/my-project"
+target = "/work"
+mode = "rw"
+optional = true
+
+[resources.allow.anthropic]
+enabled = true
+
+[resources.allow.github]
+enabled = true
+
+[resources.allow.npm]
+enabled = true
+
+[resources.env]
+ANTHROPIC_API_KEY = "${ANTHROPIC_API_KEY}"

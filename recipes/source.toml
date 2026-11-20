@@ -1,0 +1,11 @@
+# Recipe source metadata (optional).
+#
+# Layout of a recipe source (a local directory or a git repository):
+#
+#   source.toml              this file
+#   <recipe>/<version>.toml  one file per published version of a recipe
+#
+# Versions are numbers separated by dots (1.0.0, 2.1, 1.0.0-rc1). A published
+# version must never be modified: environments lock its sha256. To change a
+# recipe, add a new version file.
+description = "Recipes shipped with rebox"

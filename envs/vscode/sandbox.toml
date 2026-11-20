@@ -1,0 +1,39 @@
+description = "VS Code editing one project, with extensions from the marketplace only"
+
+[build]
+# Use "vscodium" instead for the build without Microsoft telemetry (Open VSX extensions).
+recipes = ["vscode"]
+
+[resources]
+network = "allowlist"
+cpus = 4
+memory = "8G"
+pids = 4096
+
+[resources.allow.vscode-marketplace]
+enabled = true
+
+[resources.binds.project]
+source = "~/code/my-project"
+target = "/work"
+mode = "rw"
+optional = true
+
+# --- Display access (X11) --------------------------------------------------
+# WARNING: any program allowed to talk to your X server can read keystrokes and
+# take screenshots of your other windows. Do not give a display to untrusted
+# software (e.g. in a malware lab).
+[resources.binds.x11]
+source = "/tmp/.X11-unix"
+target = "/tmp/.X11-unix"
+mode = "ro"
+
+[resources.binds.xauthority]
+source = "${XAUTHORITY:-~/.Xauthority}"
+target = "/run/sandbox-x11/Xauthority"
+mode = "ro"
+optional = true
+
+[resources.env]
+DISPLAY = "${DISPLAY}"
+XAUTHORITY = "/run/sandbox-x11/Xauthority"

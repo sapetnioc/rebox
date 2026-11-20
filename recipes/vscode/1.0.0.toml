@@ -1,0 +1,46 @@
+description = "Visual Studio Code (Microsoft build); start it with `code` (needs a display, see envs/vscode)"
+requires = ["gui-base"]
+
+post = '''
+case "$(uname -m)" in
+    x86_64) platform=linux-x64 ;;
+    aarch64) platform=linux-arm64 ;;
+    *) echo "Unsupported architecture $(uname -m)" >&2; exit 1 ;;
+esac
+url="${VSCODE_URL:-https://update.code.visualstudio.com/${VSCODE_VERSION}/${platform}/stable}"
+echo "Downloading $url"
+mkdir -p /opt/vscode
+# The archive holds a single top-level directory (VSCode-linux-x64/).
+curl -fsSL "$url" | tar -xz --no-same-owner --strip-components=1 -C /opt/vscode
+test -x /opt/vscode/bin/code
+
+cat > /usr/local/bin/code <<'WRAPPER'
+#!/bin/sh
+# Electron cannot use its setuid/namespace sandbox inside an unprivileged
+# container: the sandbox itself provides the isolation.
+settings="$HOME/.config/Code/User/settings.json"
+if [ ! -f "$settings" ]; then
+    mkdir -p "$(dirname "$settings")"
+    cat > "$settings" <<'JSON'
+{
+    "update.mode": "none",
+    "telemetry.telemetryLevel": "off",
+    "window.titleBarStyle": "custom"
+}
+JSON
+fi
+exec /opt/vscode/bin/code --no-sandbox "$@"
+WRAPPER
+chmod 755 /usr/local/bin/code
+/opt/vscode/bin/code --version --no-sandbox --user-data-dir /tmp/vscode-check || true
+rm -rf /tmp/vscode-check
+'''
+
+[args]
+# Pin a release for reproducible images ("latest" also works).
+VSCODE_VERSION = "1.144.0"
+# Optional: download from this URL instead (mirror, internal artifact store...).
+VSCODE_URL = ""
+
+[environment]
+DONT_PROMPT_WSL_INSTALL = "1"

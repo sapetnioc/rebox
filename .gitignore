@@ -1,0 +1,7 @@
+.pixi/
+__pycache__/
+envs/*/.state/
+envs/*/workspace/.pixi/
+*-bundle.tar
+*-bundle.tar.gz
+.sources/

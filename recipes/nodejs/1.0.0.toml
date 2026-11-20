@@ -1,0 +1,18 @@
+description = "Node.js runtime from the official nodejs.org binaries"
+requires = ["base"]
+
+post = '''
+case "$(uname -m)" in
+    x86_64) arch=x64 ;;
+    aarch64) arch=arm64 ;;
+    *) echo "Unsupported architecture $(uname -m)" >&2; exit 1 ;;
+esac
+curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${arch}.tar.xz" \
+    | tar -xJ -C /usr/local --strip-components=1 --no-same-owner
+node --version
+npm --version
+'''
+
+[args]
+NODE_VERSION = "24.20.0"
+

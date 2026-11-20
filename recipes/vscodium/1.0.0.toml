@@ -1,0 +1,43 @@
+description = "VSCodium (VS Code without Microsoft telemetry/branding, Open VSX extensions); start it with `codium`"
+requires = ["gui-base"]
+
+post = '''
+case "$(uname -m)" in
+    x86_64) arch=x64 ;;
+    aarch64) arch=arm64 ;;
+    *) echo "Unsupported architecture $(uname -m)" >&2; exit 1 ;;
+esac
+url="${VSCODIUM_URL:-https://github.com/VSCodium/vscodium/releases/download/${VSCODIUM_VERSION}/VSCodium-linux-${arch}-${VSCODIUM_VERSION}.tar.gz}"
+echo "Downloading $url"
+mkdir -p /opt/vscodium
+# The archive has no top-level directory.
+curl -fsSL "$url" | tar -xz --no-same-owner -C /opt/vscodium
+test -x /opt/vscodium/bin/codium
+
+cat > /usr/local/bin/codium <<'WRAPPER'
+#!/bin/sh
+# Electron cannot use its setuid/namespace sandbox inside an unprivileged
+# container: the sandbox itself provides the isolation.
+settings="$HOME/.config/VSCodium/User/settings.json"
+if [ ! -f "$settings" ]; then
+    mkdir -p "$(dirname "$settings")"
+    cat > "$settings" <<'JSON'
+{
+    "update.mode": "none",
+    "telemetry.telemetryLevel": "off",
+    "window.titleBarStyle": "custom"
+}
+JSON
+fi
+exec /opt/vscodium/bin/codium --no-sandbox "$@"
+WRAPPER
+chmod 755 /usr/local/bin/codium
+/opt/vscodium/bin/codium --version --no-sandbox --user-data-dir /tmp/codium-check || true
+rm -rf /tmp/codium-check
+'''
+
+[args]
+# Release tag from https://github.com/VSCodium/vscodium/releases
+VSCODIUM_VERSION = "1.143.17232"
+# Optional: download from this URL instead (mirror, internal artifact store...).
+VSCODIUM_URL = ""
