@@ -461,10 +461,11 @@ secrets (SSH keys, cloud credentials) into a sandbox.
 
 ## Building and publishing the package
 
-The repository is a Pixi workspace that also defines the rebox conda package
-(`[package]` in `pixi.toml`, built with the `pixi-build-python` backend from
-`pyproject.toml`). The package is `noarch: python`: one build serves every
-Linux architecture.
+`pyproject.toml` is the only manifest of the repository: `[project]` holds the
+package metadata (name, version, `rebox` entry point) and `[tool.pixi.*]` the
+Pixi development workspace and the conda package build (`pixi-build-python`
+backend, conda run-dependencies in `[tool.pixi.package.run-dependencies]`).
+The package is `noarch: python`: one build serves every Linux architecture.
 
 ```
 pixi run build-package                       # -> dist/rebox-<version>-<build>.conda
@@ -477,8 +478,9 @@ Remote channels need credentials (`pixi auth login ...`). A local or shared
 directory channel is enough for a team or an air-gapped site:
 `pixi global install -c file:///srv/conda-channel -c conda-forge rebox`.
 
-To release a version, bump `version` in both `pyproject.toml` and the
-`[package]` table of `pixi.toml`. The recipes shipped with rebox are package
+To release a version, bump `version` in `[project]`. Runtime dependencies
+are conda packages only (`[project].dependencies` stays empty, so that Pixi
+never has to resolve anything from PyPI). The recipes shipped with rebox are package
 data (`src/rebox/data/recipes`): add new versions there, never modify a
 published one.
 

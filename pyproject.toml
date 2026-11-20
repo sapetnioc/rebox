@@ -10,9 +10,12 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Security",
 ]
-# Runtime tools (apptainer, squashfs-tools, git, pixi-pack) are not Python
-# packages: they are declared as conda run-dependencies in pixi.toml.
-dependencies = ["tomli-w>=1.0"]
+# rebox is distributed as a conda package: all its runtime dependencies
+# (tomli-w, apptainer, squashfs-tools, git, pixi-pack) are conda packages,
+# declared in [tool.pixi.package.run-dependencies] below. Declaring them here
+# would make Pixi resolve them from PyPI (and need the conda/PyPI name mapping,
+# fetched from the internet).
+dependencies = []
 
 [project.scripts]
 rebox = "rebox.cli:main"
@@ -28,7 +31,64 @@ build-backend = "hatchling.build"
 packages = ["src/rebox"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/rebox", "tests", "README.md", "pixi.toml", "pyproject.toml"]
+include = ["src/rebox", "tests", "README.md", "pyproject.toml"]
+
+# --------------------------------------------------------------------------- #
+# Pixi: development workspace and conda package
+#
+#   pixi run rebox ...          run rebox from the sources
+#   pixi run -e test test       run the tests
+#   pixi run build-package      build the conda package into dist/
+#   pixi publish --to CHANNEL   build and publish the conda package
+#
+# The conda package takes its name, version and entry point from [project];
+# its conda run-dependencies are declared in [tool.pixi.package.run-dependencies].
+# --------------------------------------------------------------------------- #
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]
+preview = ["pixi-build"]
+
+[tool.pixi.dependencies]
+python = ">=3.11"
+apptainer = ">=1.3"
+squashfs-tools = "*"
+tomli-w = ">=1.0"
+pixi-pack = ">=0.7"
+git = "*"
+
+[tool.pixi.tasks]
+rebox = { cmd = "python -m rebox", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
+build-package = { cmd = "pixi build --output-dir dist", description = "Build the rebox conda package into dist/" }
+
+[tool.pixi.feature.test.dependencies]
+pytest = "*"
+
+[tool.pixi.feature.test.tasks]
+test = "python -m pytest -q"
+
+[tool.pixi.environments]
+test = ["test"]
+
+[tool.pixi.package.build.backend]
+name = "pixi-build-python"
+version = "0.8.*"
+channels = ["conda-forge"]
+
+[tool.pixi.package.build.config]
+noarch = true
+
+[tool.pixi.package.host-dependencies]
+hatchling = "*"
+
+[tool.pixi.package.run-dependencies]
+python = ">=3.11"
+tomli-w = ">=1.0"
+apptainer = ">=1.3"
+squashfs-tools = "*"
+git = "*"
+pixi-pack = ">=0.7"
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
