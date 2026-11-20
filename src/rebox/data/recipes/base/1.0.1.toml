@@ -1,0 +1,62 @@
+description = "Debian/Ubuntu base: CA certificates, curl, git, socat and common shell tools"
+
+post = '''
+export DEBIAN_FRONTEND=noninteractive
+# apt drops privileges to "_apt", which fails in a rootless (fakeroot) build.
+echo 'APT::Sandbox::User "root";' > /etc/apt/apt.conf.d/99sandbox
+if [ -n "$APT_SNAPSHOT" ]; then
+    . /etc/os-release
+    cat > /etc/apt/sources.list.d/debian.sources <<SOURCES
+Types: deb
+URIs: http://snapshot.debian.org/archive/debian/$APT_SNAPSHOT
+Suites: $VERSION_CODENAME $VERSION_CODENAME-updates
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+Types: deb
+URIs: http://snapshot.debian.org/archive/debian-security/$APT_SNAPSHOT
+Suites: $VERSION_CODENAME-security
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+SOURCES
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot
+fi
+apt-get update
+apt-get install -y --no-install-recommends fakeroot
+
+# Helper used by every recipe to install packages. In a rootless build without
+# /etc/subuid mappings, only root exists in the user namespace and package
+# scripts that chown files to system users (dbus, fontconfig...) fail; running
+# apt under fakeroot makes those calls succeed.
+cat > /usr/local/sbin/apt-install <<'HELPER'
+#!/bin/sh
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+wrap=""
+if [ "$(wc -l < /proc/self/uid_map)" -eq 1 ] && [ "$(awk '{print $3}' /proc/self/uid_map)" = 1 ]; then
+    # The real chown fails with EINVAL (unmapped uid), which fakeroot does not
+    # hide: tell it not to call chown at all (ownership is faked).
+    wrap=fakeroot
+    export FAKEROOTDONTTRYCHOWN=1
+fi
+apt-get update
+$wrap apt-get install -y --no-install-recommends "$@"
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+HELPER
+chmod 755 /usr/local/sbin/apt-install
+
+apt-install ca-certificates curl nano vim less procps xz-utils bzip2 unzip socat $EXTRA_PACKAGES
+'''
+
+[args]
+# Extra apt packages to install (space separated).
+EXTRA_PACKAGES = ""
+# Debian only: optional snapshot.debian.org timestamp (e.g. "20261101T000000Z") to freeze
+# the Debian package versions for reproducible builds.
+APT_SNAPSHOT = ""
+
+
+[environment]
+# C.UTF-8 is built into glibc: no locales package needed.
+LANG = "C.UTF-8"
