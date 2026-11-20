@@ -278,12 +278,17 @@ All resource keys:
 | `limits_backend` | `"auto"`       | `auto`, `systemd-run`, `apptainer` or `none` (see below)        |
 | `home`           | `"persistent"` | `persistent`: `envs/NAME/.state/home`; `ephemeral`: new empty home per run |
 | `writable_tmpfs` | `true`         | writable container filesystem, discarded on exit                |
-| `gpu`            | `false`        | NVIDIA GPU access (`--nv`)                                      |
+| `display`        | `false`*       | access to the graphical server (X11, Wayland), see below        |
+| `gpu`            | `false`*       | GPU access: `true` (auto), `"nvidia"`, `"amd"`, `"dri"`, `false` |
 | `hostname`       | none           | hostname inside the sandbox                                     |
 | `binds.NAME`     |                | `source`, `target`, `mode`, `optional`, `enabled`               |
 | `env.NAME`       |                | value, may use `${VAR}` / `${VAR:-default}` from the host       |
 | `apptainer_args` | `[]`           | extra raw `apptainer exec` options                              |
 | `allow.NAME`     |                | `domains`, `ports` (default `[80, 443]`), `allow_private`, `enabled` |
+
+\* `rebox init` sets `display` / `gpu` to `true` in `rebox-defaults.toml`
+when it finds a display / a GPU on the host (override with `--display`,
+`--no-display`, `--gpu`, `--no-gpu`).
 
 What is always applied: `--containall` (own PID/IPC namespaces, minimal
 `/dev`, no host home, `/tmp` or working directory), `--cleanenv` (no host
@@ -338,35 +343,65 @@ bypass the filter. SSH, UDP and QUIC do not work. Filtering is per domain, so
 an allowed domain can still be used to send data out (e.g. pushing to
 github.com); restrict groups to what each environment really needs.
 
+## Display and GPU
+
+### Display (`display = true`)
+
+Gives the sandbox the graphical server of the session that runs rebox, in
+every network mode (`none`, `allowlist`, `host`):
+
+- **X11**: the local socket directory `/tmp/.X11-unix` (read-only) and your
+  Xauthority file are mounted, `DISPLAY` and `XAUTHORITY` are set. On Wayland
+  desktops this is XWayland, used by most toolkits and by Electron apps.
+  X11 over TCP (e.g. `ssh -X`, `DISPLAY=localhost:10.0`) only works with
+  `network = "host"`.
+- **Wayland**: only the compositor socket is exposed, as `wayland-0` in a
+  private, empty `XDG_RUNTIME_DIR` (`/run/rebox-runtime`). The rest of your
+  runtime directory (D-Bus, keyring, ssh/gpg agents...) stays hidden.
+
+Displays are looked up when the sandbox starts (`DISPLAY`, `WAYLAND_DISPLAY`,
+`XDG_RUNTIME_DIR`, `XAUTHORITY` of the shell running rebox); `rebox show NAME`
+tells what was found. `rebox init` enables `display` in `rebox-defaults.toml`
+when it finds one, so turn it off (`display = false`) in environments running
+untrusted code, as the `malware-lab` example does.
+
+**Security:** any program connected to your display can read keystrokes and
+take screenshots of your other windows. Never give a display to untrusted
+software. For a stronger separation, run a nested X server (e.g.
+`Xephyr :2`) and start rebox with `DISPLAY=:2`.
+
+### GPU (`gpu = ...`)
+
+| value      | effect                                                               |
+|------------|----------------------------------------------------------------------|
+| `true`     | use the GPUs found when the sandbox starts (any of the below)        |
+| `"nvidia"` | `--nv`: host driver libraries, `nvidia-smi`, `/dev/nvidia*`          |
+| `"amd"`    | `--rocm`: host ROCm libraries, `/dev/kfd`, `/dev/dri`                |
+| `"dri"`    | `/dev/dri` render nodes (Intel/AMD/Mesa acceleration, e.g. OpenGL, VA-API) |
+| `false`    | no GPU                                                               |
+
+NVIDIA and AMD support rely on Apptainer's `--nv` / `--rocm`, which take the
+driver libraries from the host. `rebox init` enables `gpu = true` when it
+finds a GPU (`/dev/nvidiactl`, `/dev/kfd` or `/dev/dri/renderD*`). A GPU that
+is requested but not found produces a note, not an error, so environments
+stay portable.
+
 ## GUI applications (VS Code)
 
-Graphical programs need access to your display, given with ordinary binds and
-environment variables (see `envs/vscode/rebox.toml`):
+The `vscode` / `vscodium` recipes only need display access
+(see `envs/vscode/rebox.toml`):
 
 ```toml
 [build]
 recipes = ["vscode"]                      # or "vscodium"
 
-[resources.binds.x11]
-source = "/tmp/.X11-unix"
-target = "/tmp/.X11-unix"
-mode = "ro"
-
-[resources.binds.xauthority]
-source = "${XAUTHORITY:-~/.Xauthority}"
-target = "/run/rebox-x11/Xauthority"
-mode = "ro"
-optional = true
-
-[resources.env]
-DISPLAY = "${DISPLAY}"
-XAUTHORITY = "/run/rebox-x11/Xauthority"
+[resources]
+display = true
 ```
 
 Then `rebox run vscode --no-pixi -- code /work`, or open a
 `rebox shell vscode` and run `code` from there (the Pixi environment is then
-visible to VS Code's terminals and Python extension). On Wayland desktops this
-works through XWayland.
+visible to VS Code's terminals and Python extension).
 
 - `code` / `codium` are wrappers that start the editor with `--no-sandbox`
   (Chromium's own sandbox cannot work inside an unprivileged container; the
@@ -378,10 +413,6 @@ works through XWayland.
   Extensions are stored in the sandbox home (`envs/NAME/.state/home`).
 - Settings Sync, GitHub sign-in and Copilot need more domains (e.g. the
   `github` group); add them only if you want them.
-- **Security:** any program connected to your X server can read keystrokes and
-  screenshot other windows. Never give a display to untrusted software. For
-  a stronger separation, run a nested X server (e.g. `Xephyr :2`) and give
-  the sandbox `DISPLAY=:2` only.
 
 ## Inside the sandbox
 
@@ -452,8 +483,9 @@ note if the bundle was made with a different rebox version.
 Apptainer isolates processes with Linux namespaces; it is not a virtual
 machine. Untrusted code shares the host kernel, and runs as your user (with
 your user's limits) inside the sandbox. For hostile malware, prefer
-`network = "none"` (or a minimal `allowlist`), `home = "ephemeral"`, no read-write binds, and run the
-whole thing in a dedicated user account or VM. Never bind directories with
+`network = "none"` (or a minimal `allowlist`), `home = "ephemeral"`,
+`display = false`, `gpu = false`, no read-write binds, and run the whole thing
+in a dedicated user account or VM. Never bind directories with
 secrets (SSH keys, cloud credentials) into a sandbox.
 
 ## Building and publishing the package

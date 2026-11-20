@@ -1,6 +1,6 @@
 [project]
 name = "rebox"
-version = "0.4.0"
+version = "0.5.0"
 description = "rebox (research sandbox): rootless sandbox environments built from reusable recipes, Apptainer and Pixi"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -61,7 +61,7 @@ platforms = ["linux-64"]
 def cmd_init(args: argparse.Namespace) -> int:
     from .init import init_project
     directory = Path(args.directory).resolve()
-    notes = init_project(directory, examples=args.examples)
+    notes = init_project(directory, examples=args.examples, display=args.display, gpu=args.gpu)
     print(f"Created a rebox project in {directory}")
     for note in notes:
         print(f"  {note}")
@@ -173,7 +173,13 @@ def cmd_show(project: Project, args: argparse.Namespace) -> int:
     print(f"CPUs:        {res.cpus or 'unlimited'}   Memory: "
           f"{f'{res.memory_mb} MB' if res.memory_mb else 'unlimited'}   "
           f"PIDs: {res.pids or 'unlimited'}   (limits via {limits_backend(env)})")
-    print(f"Home:        {res.home}   Writable tmpfs: {res.writable_tmpfs}   GPU: {res.gpu}")
+    from .hostcaps import detect_display, detect_gpus
+    gpu = {False: "no", True: "auto"}.get(res.gpu, res.gpu) if isinstance(res.gpu, bool) else res.gpu
+    print(f"Home:        {res.home}   Writable tmpfs: {res.writable_tmpfs}")
+    found = ", ".join(detect_display()) or "none found"
+    print(f"Display:     {'yes' if res.display else 'no'}" + (f" ({found})" if res.display else ""))
+    gpus = ", ".join(detect_gpus()) or "none found"
+    print(f"GPU:         {gpu}" + (f" (host: {gpus})" if res.gpu is not False else ""))
     print(f"Workspace:   {env.workspace} -> {WORKSPACE_TARGET} (rw)")
     for bind in res.binds:
         print(f"Bind:        {bind.name}: {bind.source} -> {bind.target} ({bind.mode})")
@@ -325,6 +331,10 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("init", help="create a rebox project (rebox-defaults.toml, recipes/, envs/)")
     s.add_argument("directory", nargs="?", default=".")
     s.add_argument("--examples", action="store_true", help="add the example environments")
+    s.add_argument("--display", action=argparse.BooleanOptionalAction, default=None,
+                   help="enable display access by default (default: if a display is found)")
+    s.add_argument("--gpu", action=argparse.BooleanOptionalAction, default=None,
+                   help="enable GPU access by default (default: if a GPU is found)")
     s.set_defaults(func=cmd_init, needs_project=False)
 
     sub.add_parser("list", help="list recipes (all versions) and environments").set_defaults(func=cmd_list)

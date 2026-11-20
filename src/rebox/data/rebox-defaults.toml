@@ -50,6 +50,14 @@ limits_backend = "auto"
 home = "persistent"
 # Allow writes anywhere in the container filesystem (discarded on exit).
 writable_tmpfs = true
+# Access to the graphical server of the session running rebox (X11 socket and
+# Xauthority, Wayland socket), in every network mode. Any program using the
+# display can read keystrokes and capture other windows: disable it for
+# untrusted software. `rebox init` enables it when it finds a display.
+display = false
+# GPU access: true (use the GPUs found when the sandbox starts: NVIDIA with
+# --nv, AMD/ROCm with --rocm, other render nodes in /dev/dri), "nvidia",
+# "amd", "dri" or false. `rebox init` enables it when it finds a GPU.
 gpu = false
 hostname = "sandbox"
 

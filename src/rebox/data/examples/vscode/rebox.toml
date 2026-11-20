@@ -9,6 +9,10 @@ network = "allowlist"
 cpus = 4
 memory = "8G"
 pids = 4096
+# Display access (X11 / Wayland sockets of your session). WARNING: any program
+# allowed to use your display can read keystrokes and take screenshots of your
+# other windows. Do not give a display to untrusted software.
+display = true
 
 [resources.allow.vscode-marketplace]
 enabled = true
@@ -18,22 +22,3 @@ source = "~/code/my-project"
 target = "/work"
 mode = "rw"
 optional = true
-
-# --- Display access (X11) --------------------------------------------------
-# WARNING: any program allowed to talk to your X server can read keystrokes and
-# take screenshots of your other windows. Do not give a display to untrusted
-# software (e.g. in a malware lab).
-[resources.binds.x11]
-source = "/tmp/.X11-unix"
-target = "/tmp/.X11-unix"
-mode = "ro"
-
-[resources.binds.xauthority]
-source = "${XAUTHORITY:-~/.Xauthority}"
-target = "/run/rebox-x11/Xauthority"
-mode = "ro"
-optional = true
-
-[resources.env]
-DISPLAY = "${DISPLAY}"
-XAUTHORITY = "/run/rebox-x11/Xauthority"

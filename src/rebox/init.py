@@ -25,13 +25,41 @@ description = "Recipes of this project"
 """
 
 
-def init_project(directory: Path, *, examples: bool = False) -> list[str]:
+def defaults_for_host(*, display: bool | None = None, gpu: bool | None = None,
+                      notes: list[str] | None = None) -> str:
+    """The rebox-defaults.toml template, with display/gpu enabled if the host has them.
+
+    ``None`` means auto-detect; ``True`` / ``False`` force the value.
+    """
+    from .hostcaps import detect_display, detect_gpus
+
+    notes = [] if notes is None else notes
+    text = (DATA_DIR / "rebox-defaults.toml").read_text()
+    displays = detect_display()
+    gpus = detect_gpus()
+    use_display = bool(displays) if display is None else display
+    use_gpu = bool(gpus) if gpu is None else gpu
+    if use_display:
+        found = f"found by rebox init: {', '.join(displays)}" if displays else "forced by rebox init"
+        text = text.replace("\ndisplay = false\n", f"\ndisplay = true  # {found}\n", 1)
+    if use_gpu:
+        found = f"found by rebox init: {', '.join(gpus)}" if gpus else "forced by rebox init"
+        text = text.replace("\ngpu = false\n", f"\ngpu = true  # {found}\n", 1)
+    notes.append(f"display access: {'on' if use_display else 'off'}"
+                 + (f" ({', '.join(displays)})" if displays else " (no display found)"))
+    notes.append(f"GPU access: {'on' if use_gpu else 'off'}"
+                 + (f" ({', '.join(gpus)})" if gpus else " (no GPU found)"))
+    return text
+
+
+def init_project(directory: Path, *, examples: bool = False, display: bool | None = None,
+                 gpu: bool | None = None) -> list[str]:
     """Create a rebox project in ``directory``; return notes for the user."""
     notes: list[str] = []
     directory.mkdir(parents=True, exist_ok=True)
     if (directory / "rebox-defaults.toml").exists():
         raise ConfigError(f"{directory} already contains a rebox project (rebox-defaults.toml exists)")
-    shutil.copy2(DATA_DIR / "rebox-defaults.toml", directory / "rebox-defaults.toml")
+    (directory / "rebox-defaults.toml").write_text(defaults_for_host(display=display, gpu=gpu, notes=notes))
     recipes = directory / "recipes"
     recipes.mkdir(exist_ok=True)
     if not (recipes / "source.toml").exists():

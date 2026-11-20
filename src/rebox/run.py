@@ -147,8 +147,18 @@ def build_command(
                      "--env", "NODE_USE_ENV_PROXY=1"]
     if res.hostname:
         cmd.argv += ["--hostname", res.hostname]
-    if res.gpu:
-        cmd.argv.append("--nv")
+    from .hostcaps import display_access, gpu_args
+    gpu_options, gpu_notes = gpu_args(res.gpu)
+    cmd.argv += gpu_options
+    cmd.notes += gpu_notes
+    display_env: dict[str, str] = {}
+    if res.display:
+        access = display_access(network)
+        for spec in access.binds:
+            cmd.argv += ["--bind", spec]
+        display_env = access.env
+        cmd.temp_dirs += access.temp_dirs
+        cmd.notes += access.notes
 
     if backend == "apptainer":
         if res.cpus:
@@ -161,6 +171,10 @@ def build_command(
     for key, value in res.env.items():
         if network == "allowlist" and key.lower() in PROXY_VARS:
             continue  # the allowlist proxy settings above take precedence
+        if key in display_env:
+            continue  # set by the display resource
+        cmd.argv += ["--env", f"{key}={value}"]
+    for key, value in display_env.items():
         cmd.argv += ["--env", f"{key}={value}"]
     cmd.argv += res.apptainer_args
     cmd.argv.append(str(env.image))

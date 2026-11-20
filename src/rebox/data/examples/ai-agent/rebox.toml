@@ -11,6 +11,9 @@ CLAUDE_CODE_VERSION = "latest"
 network = "allowlist"
 cpus = 4
 memory = "8G"
+# A terminal agent needs neither the display nor the GPU.
+display = false
+gpu = false
 
 # The only host project the agent can modify.
 [resources.binds.project]

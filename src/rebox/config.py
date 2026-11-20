@@ -212,7 +212,8 @@ class Resources:
     limits_backend: str = "auto"
     home: str = "persistent"
     writable_tmpfs: bool = True
-    gpu: bool = False
+    gpu: bool | str = False  # False, True (auto-detect), "nvidia", "amd" or "dri"
+    display: bool = False
     hostname: str | None = None
     binds: list[Bind] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
@@ -283,7 +284,7 @@ ENV_KEYS = {"name", "description", "inherit_defaults", "build", "resources", "so
 BUILD_KEYS = {"base_image", "default_recipes", "recipes", "recipe_args"}
 RESOURCE_KEYS = {
     "network", "cpus", "memory", "pids", "limits_backend", "home", "writable_tmpfs",
-    "gpu", "hostname", "binds", "env", "apptainer_args", "allow",
+    "gpu", "display", "hostname", "binds", "env", "apptainer_args", "allow",
 }
 
 
@@ -328,7 +329,14 @@ def _parse_resources(data: dict[str, Any], env_dir: Path, warnings: list[str]) -
     if res.home not in VALID_HOME:
         raise ConfigError(f"resources.home must be one of {sorted(VALID_HOME)}")
     res.writable_tmpfs = bool(data.get("writable_tmpfs", res.writable_tmpfs))
-    res.gpu = bool(data.get("gpu", res.gpu))
+    gpu = data.get("gpu", res.gpu)
+    if not isinstance(gpu, bool) and gpu not in ("nvidia", "amd", "dri"):
+        raise ConfigError('resources.gpu must be true (auto-detect), false, "nvidia", "amd" or "dri"')
+    res.gpu = gpu
+    display = data.get("display", res.display)
+    if not isinstance(display, bool):
+        raise ConfigError("resources.display must be true or false")
+    res.display = display
     res.hostname = data.get("hostname")
     res.apptainer_args = [str(a) for a in data.get("apptainer_args", [])]
 
