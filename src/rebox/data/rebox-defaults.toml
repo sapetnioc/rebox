@@ -99,6 +99,10 @@ domains = ["github.com", "*.github.com", "*.githubusercontent.com", "codeload.gi
 enabled = false
 domains = ["api.anthropic.com", "console.anthropic.com", "claude.ai", "statsig.anthropic.com"]
 
+[resources.allow.neuro-forge]
+enabled = false
+domains = ["brainvisa.info"]
+
 [resources.allow.vscode-marketplace]
 enabled = false
 domains = ["marketplace.visualstudio.com", "*.gallery.vsassets.io", "*.gallerycdn.vsassets.io",

@@ -1,0 +1,24 @@
+description = "rebox itself, installed with `pixi global` from the neuro-forge channel (command `rebox`)"
+requires = ["pixi"]
+
+post = '''
+# Global Pixi environments of the image live in /opt/pixi-global, outside the
+# sandbox home, so that `pixi global` still works for the user at run time.
+export PIXI_HOME=/opt/pixi-global
+spec=rebox
+if [ "$REBOX_VERSION" != "latest" ]; then
+    spec="rebox==$REBOX_VERSION"
+fi
+pixi global install --channel "$REBOX_CHANNEL" --channel conda-forge "$spec"
+/opt/pixi-global/bin/rebox --version
+rm -rf "$HOME/.cache/rattler"
+'''
+
+[args]
+# Conda channel providing rebox (conda-forge provides its dependencies).
+REBOX_CHANNEL = "https://brainvisa.info/neuro-forge"
+# Pin a version (e.g. "0.5.0") for reproducible images.
+REBOX_VERSION = "latest"
+
+[environment]
+PATH = "/opt/pixi-global/bin:$PATH"

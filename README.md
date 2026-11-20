@@ -222,6 +222,7 @@ searched first, so it can override them):
 | `gui-base`       | GTK/NSS/X11 libraries and fonts for GUI and Electron apps      |
 | `vscode`         | Visual Studio Code (Microsoft build), command `code`           |
 | `vscodium`       | VSCodium (no Microsoft telemetry, Open VSX extensions), command `codium` |
+| `rebox`          | rebox itself, `pixi global install` from neuro-forge (`REBOX_CHANNEL`, `REBOX_VERSION` args) |
 
 ## Environments and resources
 
@@ -322,7 +323,8 @@ sandbox (no network)                              host
 - Domains come from the enabled `[resources.allow.*]` groups. `example.com`
   matches only that name; `*.example.com` matches any subdomain (not the apex).
   `rebox-defaults.toml` defines the groups `conda` (enabled), `pypi`, `npm`,
-  `github` and `anthropic` (disabled; enable them per environment).
+  `github`, `anthropic`, `neuro-forge`, `vscode-marketplace` and `open-vsx`
+  (disabled; enable them per environment).
 - DNS is resolved on the host: the sandbox has no resolver, which also
   prevents DNS-based exfiltration. Allowed names that resolve to loopback,
   private or link-local addresses are refused unless the group sets
