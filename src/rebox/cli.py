@@ -178,6 +178,7 @@ def cmd_show(project: Project, args: argparse.Namespace) -> int:
     print(f"Home:        {res.home}   Writable tmpfs: {res.writable_tmpfs}")
     found = ", ".join(detect_display()) or "none found"
     print(f"Display:     {'yes' if res.display else 'no'}" + (f" ({found})" if res.display else ""))
+    print(f"Nested:      {'yes (/dev/fuse exposed)' if res.nested else 'no'}")
     gpus = ", ".join(detect_gpus()) or "none found"
     print(f"GPU:         {gpu}" + (f" (host: {gpus})" if res.gpu is not False else ""))
     print(f"Workspace:   {env.workspace} -> {WORKSPACE_TARGET} (rw)")

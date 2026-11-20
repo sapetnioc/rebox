@@ -281,6 +281,7 @@ All resource keys:
 | `writable_tmpfs` | `true`         | writable container filesystem, discarded on exit                |
 | `display`        | `false`*       | access to the graphical server (X11, Wayland), see below        |
 | `gpu`            | `false`*       | GPU access: `true` (auto), `"nvidia"`, `"amd"`, `"dri"`, `false` |
+| `nested`         | `false`        | expose `/dev/fuse` so rebox can run sandboxes inside (see below) |
 | `hostname`       | none           | hostname inside the sandbox                                     |
 | `binds.NAME`     |                | `source`, `target`, `mode`, `optional`, `enabled`               |
 | `env.NAME`       |                | value, may use `${VAR}` / `${VAR:-default}` from the host       |
@@ -387,6 +388,23 @@ driver libraries from the host. `rebox init` enables `gpu = true` when it
 finds a GPU (`/dev/nvidiactl`, `/dev/kfd` or `/dev/dri/renderD*`). A GPU that
 is requested but not found produces a note, not an error, so environments
 stay portable.
+
+## rebox inside a sandbox
+
+An environment can contain rebox itself (`rebox` recipe), e.g. to unpack and
+run bundles from inside a sandbox. Apptainer mounts images with FUSE, and
+`/dev/fuse` is not part of the minimal `/dev` of a sandbox, so:
+
+- set `nested = true` in the outer environment: `/dev/fuse` is exposed and
+  nested sandboxes start as fast as on the host (all network modes work,
+  `allowlist` included, nested in each other);
+- without it, the inner rebox still works: it extracts the image to a
+  temporary directory (`envs/NAME/.state/tmp`) at every start, which is slower
+  and needs disk space, and says so.
+
+Building images (`rebox build`) inside a sandbox is not supported. FUSE
+slightly widens the kernel interface reachable from the sandbox: keep
+`nested = false` for untrusted software.
 
 ## GUI applications (VS Code)
 

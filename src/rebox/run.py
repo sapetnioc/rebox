@@ -77,6 +77,7 @@ class Command:
     argv: list[str]
     temp_dirs: list[Path] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    host_env: dict[str, str] = field(default_factory=dict)  # for the apptainer process itself
     proxy: AllowlistProxy | None = None
 
 
@@ -110,6 +111,28 @@ def build_command(
         cmd.argv += ["--"]
 
     cmd.argv += [apptainer_bin(), "--quiet", "exec", "--containall", "--cleanenv", "--no-eval"]
+
+    from .hostcaps import FUSE_DEVICE, fuse_available
+    if not fuse_available():
+        # Without FUSE the SIF image cannot be mounted: extract it to a
+        # temporary directory instead (on disk: /tmp may be a small tmpfs).
+        tmp = env.state_dir / "tmp"
+        tmp.mkdir(parents=True, exist_ok=True)
+        cmd.argv.append("--unsquash")
+        cmd.host_env["APPTAINER_TMPDIR"] = str(tmp)
+        cmd.notes.append(
+            f"{FUSE_DEVICE} is not available (rebox running inside a sandbox without "
+            "`nested = true`?): the image is extracted to a temporary directory for this run "
+            "(slower, uses disk space)"
+        )
+    if res.nested:
+        if FUSE_DEVICE.exists():
+            cmd.argv += ["--bind", str(FUSE_DEVICE)]
+        else:
+            cmd.notes.append(f"nested = true but {FUSE_DEVICE} does not exist on this host")
+    elif env.has_recipe("rebox"):
+        cmd.notes.append("this environment contains rebox: set `nested = true` so that it can "
+                         "run sandboxes efficiently")
 
     # Home directory
     if res.home == "persistent":
@@ -206,7 +229,7 @@ def run_command(env: SandboxEnv, cmd: Command, *, dry_run: bool = False, keep_pr
     try:
         if cmd.proxy:
             cmd.proxy.start()
-        return subprocess.run(cmd.argv, env=_host_env(keep_proxy)).returncode
+        return subprocess.run(cmd.argv, env={**_host_env(keep_proxy), **cmd.host_env}).returncode
     finally:
         if cmd.proxy:
             cmd.proxy.stop()

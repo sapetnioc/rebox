@@ -152,3 +152,34 @@ def test_invalid_values(project):
     defaults.write_text(defaults.read_text().replace('display = "yes"', 'gpu = "intel"'))
     with pytest.raises(ConfigError, match="resources.gpu must be"):
         load_env(project, "e")
+
+
+def test_fuse_fallback_and_nested(project, monkeypatch, tmp_path):
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    fuse = tmp_path / "fuse"
+    fuse.touch()
+    monkeypatch.setattr(hostcaps, "FUSE_DEVICE", fuse)
+    env = load_env(project, "e")
+
+    cmd = build_command(env, ["true"])
+    assert "--unsquash" not in cmd.argv and cmd.host_env == {}
+    assert "/dev/fuse" not in " ".join(cmd.argv)
+
+    env.resources.nested = True
+    cmd = build_command(env, ["true"])
+    assert cmd.argv[cmd.argv.index(str(fuse)) - 1] == "--bind"
+
+    fuse.unlink()  # e.g. rebox running inside a sandbox without nested = true
+    cmd = build_command(env, ["true"])
+    assert "--unsquash" in cmd.argv
+    assert cmd.host_env == {"APPTAINER_TMPDIR": str(env.state_dir / "tmp")}
+    assert any("extracted to a temporary directory" in n for n in cmd.notes)
+    assert any("nested = true but" in n for n in cmd.notes)
+
+
+def test_nested_must_be_boolean(project):
+    defaults = project.root / "rebox-defaults.toml"
+    defaults.write_text(defaults.read_text().replace("display = true", "nested = 1"))
+    with pytest.raises(ConfigError, match="nested must be true or false"):
+        load_env(project, "e")

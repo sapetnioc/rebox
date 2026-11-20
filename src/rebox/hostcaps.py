@@ -166,3 +166,15 @@ def gpu_args(setting: bool | str, root: Path = Path("/")) -> tuple[list[str], li
     elif "dri" in kinds and (root / "dev" / "dri").is_dir():
         args += ["--bind", "/dev/dri"]  # render nodes (Intel/AMD/Mesa acceleration)
     return args, []
+
+
+# --------------------------------------------------------------------------- #
+# FUSE (needed by Apptainer to mount SIF images without privileges)
+# --------------------------------------------------------------------------- #
+
+FUSE_DEVICE = Path("/dev/fuse")
+
+
+def fuse_available(device: Path | None = None) -> bool:
+    device = device or FUSE_DEVICE
+    return device.exists() and os.access(device, os.R_OK | os.W_OK)

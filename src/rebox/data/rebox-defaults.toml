@@ -59,6 +59,11 @@ display = false
 # --nv, AMD/ROCm with --rocm, other render nodes in /dev/dri), "nvidia",
 # "amd", "dri" or false. `rebox init` enables it when it finds a GPU.
 gpu = false
+# Expose /dev/fuse so that rebox (or apptainer) can run sandboxes inside this
+# sandbox, e.g. with the `rebox` recipe. Without it, a nested rebox still works
+# but extracts each image to a temporary directory at every start (slower).
+# FUSE slightly widens the kernel interface reachable from the sandbox.
+nested = false
 hostname = "rebox"
 
 # Host environment variables passed to the sandbox (${VAR} or ${VAR:-default}).
