@@ -468,7 +468,7 @@ backend, conda run-dependencies in `[tool.pixi.package.run-dependencies]`).
 The package is `noarch: python`: one build serves every Linux architecture.
 
 ```
-pixi run build-package                       # -> dist/rebox-<version>-<build>.conda
+pixi run build-package                       # pixi publish --target-dir dist -> dist/rebox-<version>-<build>.conda
 pixi publish --to file:///srv/conda-channel  # build + add to a local channel (indexed)
 pixi publish --to https://prefix.dev/<channel>
 pixi publish --to https://anaconda.org/<owner>/<label>

@@ -48,7 +48,7 @@ include = ["src/rebox", "tests", "README.md", "pyproject.toml"]
 [tool.pixi.workspace]
 channels = ["conda-forge"]
 platforms = ["linux-64", "linux-aarch64"]
-preview = ["pixi-build"]
+preview = ["pixi-build"]  # required by [tool.pixi.package]
 
 [tool.pixi.dependencies]
 python = ">=3.11"
@@ -60,7 +60,7 @@ git = "*"
 
 [tool.pixi.tasks]
 rebox = { cmd = "python -m rebox", env = { PYTHONPATH = "$PIXI_PROJECT_ROOT/src" } }
-build-package = { cmd = "pixi build --output-dir dist", description = "Build the rebox conda package into dist/" }
+build-package = { cmd = "pixi publish --target-dir dist", description = "Build the rebox conda package into dist/" }
 
 [tool.pixi.feature.test.dependencies]
 pytest = "*"
