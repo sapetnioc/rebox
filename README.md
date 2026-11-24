@@ -292,8 +292,9 @@ All resource keys:
 when it finds a display / a GPU on the host (override with `--display`,
 `--no-display`, `--gpu`, `--no-gpu`).
 
-What is always applied: `--containall` (own PID/IPC namespaces, minimal
-`/dev`, no host home, `/tmp` or working directory), `--cleanenv` (no host
+What is always applied: user and mount namespaces, `--containall` (own
+PID/IPC namespaces, minimal `/dev`, no host home, `/tmp` or working
+directory), `--cleanenv` (no host
 environment variables, proxies included, except those in `resources.env`),
 the workspace mounted at `/rebox`, the sandbox user being your own
 unprivileged user.
@@ -303,48 +304,146 @@ when a systemd user session exists. Otherwise the tool prints a note and runs
 without limits; set `limits_backend = "systemd-run"` or `"apptainer"` to make
 that an error instead.
 
-## Allowlist network mode
+## Network isolation
 
-With `network = "allowlist"` the sandbox has no network interface except
-loopback, exactly like `none`. Its only way out is a filtering HTTP proxy that
-the tool runs on the host for the duration of the session:
+### The three modes
+
+| `network`   | network namespace           | the sandbox can reach                                        |
+|-------------|-----------------------------|--------------------------------------------------------------|
+| `none`      | its own, loopback only      | nothing outside the sandbox                                  |
+| `allowlist` | its own, loopback only      | HTTP(S) to the allowed domains, through rebox's proxy        |
+| `host`      | the host's (shared)         | everything the host can reach, host loopback services included |
+
+`--network MODE` on `shell` / `run` overrides the mode for one session.
+
+### How it works: Linux namespaces, no root, no firewall rules
+
+Every sandbox is started with `apptainer exec` as your own, unprivileged user.
+Apptainer creates a **user namespace** (in which your user can create the
+other namespaces without privileges) and rebox asks for:
+
+- a **mount** namespace (always): the sandbox only sees its image and the
+  paths rebox binds into it;
+- **PID** and **IPC** namespaces (`--containall`): host processes and their
+  shared memory are invisible;
+- a **UTS** namespace (`hostname`);
+- with `none` and `allowlist`, a **network** namespace
+  (`--net --network none`).
+
+The **cgroup** namespace is shared with the host (the sandbox can read the
+names of the host's cgroups, not change them).
+
+A new network namespace has its own network stack, which only holds the
+loopback interface `lo`: no other interface, no route, no DNS server (the
+`/etc/resolv.conf` copied from the host points to addresses that are
+unreachable). So:
+
+- there is no path to the outside at all, whatever the program does: raw
+  sockets, UDP, ICMP or a hand-written TCP client fail with "network
+  unreachable";
+- the host's loopback services (`127.0.0.1` of the host: databases, Jupyter,
+  development servers, local model servers...) are **not** reachable: the
+  sandbox's `127.0.0.1` is its own;
+- abstract Unix sockets (names starting with `@`, e.g. `@/tmp/.X11-unix/X0`)
+  belong to the host network namespace and are not reachable either;
+- filesystem Unix sockets do not depend on the network namespace: they are
+  reachable only if their file is visible, and rebox binds only the ones it
+  needs (the allowlist proxy socket, and the display sockets with
+  `display = true`).
+
+There are no virtual interfaces, no `iptables`/`nftables` rules and nothing
+to clean up: the namespace disappears with the sandbox. Even code that gains
+"root" inside the sandbox's user namespace can only configure its own, empty
+network namespace.
+
+rebox deliberately does not give the sandbox a user-mode network stack
+(slirp4netns, pasta) filtered by IP address: allowlisting IP addresses does
+not work with CDNs and changing DNS records, and it leaves DNS as a channel to
+send data out. Filtering by domain name needs a proxy anyway.
+
+### Allowlist mode: the filtering proxy
+
+With `network = "allowlist"` the sandbox is isolated exactly like with
+`none`, plus one way out: a Unix socket leading to a filtering HTTP proxy that
+rebox runs on the host, in the host network namespace, for the duration of
+the session.
 
 ```
-sandbox (no network)                              host
+sandbox (own network namespace, lo only)                     host
   curl, pip, pixi, git, claude ...
      │ HTTP(S)_PROXY=http://127.0.0.1:3128
      ▼
   socat relay 127.0.0.1:3128 ── Unix socket ──► allowlist proxy ──► Internet
                                 (bind mount)     checks host:port
+                                                 resolves DNS
+                                                 logs every decision
 ```
 
-- HTTPS goes through `CONNECT host:port`: the proxy checks the host name and
-  relays the encrypted stream untouched (no TLS interception, no certificate
-  to install). Plain HTTP requests are checked the same way.
-- Domains come from the enabled `[resources.allow.*]` groups. `example.com`
-  matches only that name; `*.example.com` matches any subdomain (not the apex).
-  `rebox-defaults.toml` defines the groups `conda` (enabled), `pypi`, `npm`,
-  `github`, `anthropic`, `neuro-forge`, `vscode-marketplace` and `open-vsx`
-  (disabled; enable them per environment).
-- DNS is resolved on the host: the sandbox has no resolver, which also
-  prevents DNS-based exfiltration. Allowed names that resolve to loopback,
-  private or link-local addresses are refused unless the group sets
-  `allow_private = true` (to reach a local service).
-- Every decision is appended to `envs/NAME/.state/network.log`, and a summary
-  of refused destinations is printed when the session ends: the easiest way to
-  build an allowlist is to run once and read the log.
-- If the host itself must use an HTTP proxy (`https_proxy` in the environment
-  of the tool), allowed connections are chained through it.
-- The relay needs `socat` in the image (installed by the `base` recipe).
-- `--network allowlist` on `shell` / `run` switches any environment to this
-  mode for one session.
+1. For each session, rebox starts the proxy inside the rebox process. It
+   listens on a Unix socket (mode `0600`) in a new private temporary
+   directory, bind-mounted in the sandbox at `/run/rebox-net/proxy.sock`. The
+   proxy stops, and the directory is removed, when the session ends.
+2. Before your command, a `socat` relay starts in the sandbox: it listens on
+   the sandbox's own `127.0.0.1:3128` and forwards each connection to the
+   socket.
+3. `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` (and their lowercase forms)
+   point to `http://127.0.0.1:3128`; `NO_PROXY` covers the sandbox loopback;
+   `NODE_USE_ENV_PROXY=1` makes Node.js `fetch` use the proxy too. Proxy
+   variables of the host are never passed.
+4. For each connection, the proxy reads the request:
+   - HTTPS (and any TLS protocol) arrives as `CONNECT host:port`: the proxy
+     checks the host name and port, then relays the encrypted stream
+     untouched (no TLS interception, no certificate to install);
+   - plain HTTP arrives as `GET http://host/path`, checked the same way;
+   - anything else is refused (`400`), unlisted destinations get `403`.
+5. Names are resolved by the proxy, on the host: the sandbox never talks to a
+   DNS server, which also prevents DNS-based exfiltration. Allowed names that
+   resolve to loopback, private or link-local addresses are refused unless
+   the group sets `allow_private = true` (to reach a local service on
+   purpose).
 
-Limits: only programs honouring `HTTP(S)_PROXY` can reach the network (curl,
-git over HTTPS, pip, npm, pixi, Claude Code…; Node.js `fetch` needs
-`NODE_USE_ENV_PROXY=1`, which the tool sets). Others simply fail, they cannot
-bypass the filter. SSH, UDP and QUIC do not work. Filtering is per domain, so
-an allowed domain can still be used to send data out (e.g. pushing to
-github.com); restrict groups to what each environment really needs.
+Domains come from the enabled `[resources.allow.*]` groups. `example.com`
+matches only that name; `*.example.com` matches any subdomain (not the apex).
+`ports` defaults to `[80, 443]`. `rebox-defaults.toml` defines the groups
+`conda` (enabled), `pypi`, `npm`, `github`, `anthropic`, `neuro-forge`,
+`vscode-marketplace` and `open-vsx` (disabled; enable them per environment).
+
+Every decision (`ALLOW`, `DENY`, `ERROR` with host and port) is appended to
+`envs/NAME/.state/network.log`, and a summary of refused destinations is
+printed when the session ends: the easiest way to build an allowlist is to
+run once and read the log.
+
+If the host itself must use an HTTP proxy (`https_proxy` in the environment of
+rebox), allowed connections are chained through it. The upstream proxy then
+resolves names, so the private-address check does not apply.
+
+The relay needs `socat` in the image (installed by the `base` recipe).
+
+### Checking it yourself
+
+```
+rebox run NAME -- cat /proc/net/dev              # interfaces: only lo
+rebox run NAME -- readlink /proc/self/ns/net     # differs from the host's
+readlink /proc/self/ns/net                       # (on the host)
+rebox run NAME --network allowlist -- curl -sS https://example.org
+                                                 # CONNECT tunnel failed, response 403
+tail envs/NAME/.state/network.log                # DENY example.org:443 ...
+```
+
+### Limits
+
+- In `allowlist` mode, only programs honouring `HTTP(S)_PROXY` reach the
+  network (curl, git over HTTPS, pip, npm, pixi, Claude Code...). Others
+  fail: they cannot bypass the filter. SSH, UDP and QUIC (HTTP/3) do not work.
+- Filtering is per domain: an allowed domain can still be used to send data
+  out (e.g. pushing to github.com, or to any site hosted under an allowed
+  wildcard). Keep each environment's groups to what it really needs.
+- The proxy sees host names and ports, not the content of HTTPS traffic.
+- `network = "host"` shares the host network namespace: the sandbox reaches
+  everything the host can, including services listening on the host's
+  `127.0.0.1` and abstract Unix sockets. Use it only for trusted software.
+- Namespaces share the host kernel: a kernel vulnerability can break out of
+  any namespace-based sandbox (see [Security notes](#security-notes)).
 
 ## Display and GPU
 
@@ -504,8 +603,10 @@ Apptainer isolates processes with Linux namespaces; it is not a virtual
 machine. Untrusted code shares the host kernel, and runs as your user (with
 your user's limits) inside the sandbox. For hostile malware, prefer
 `network = "none"` (or a minimal `allowlist`), `home = "ephemeral"`,
-`display = false`, `gpu = false`, no read-write binds, and run the whole thing
-in a dedicated user account or VM. Never bind directories with
+`display = false`, `gpu = false`, `nested = false`, no read-write binds, never
+`network = "host"`, and run the whole thing in a dedicated user account or VM.
+See [Network isolation](#network-isolation) for what each network mode
+blocks. Never bind directories with
 secrets (SSH keys, cloud credentials) into a sandbox.
 
 ## Building and publishing the package
